@@ -367,7 +367,10 @@ function updateWalk(dt: number) {
 // minimapa aktuálního podlaží
 const mm = $('#minimap') as HTMLCanvasElement;
 const mg = mm.getContext('2d')!;
-const FLOOR_COL: Record<string, string> = { wood: '#e4c9a3', tile: '#dfe3e2', stone: '#d6c8b4', concrete: '#cfcac1' };
+const FLOOR_COL: Record<string, string> = {
+  wood: '#e4c9a3', tile: '#dfe3e2', stone: '#d6c8b4', concrete: '#cfcac1',
+  carpet: '#c9bca8', linoleum: '#c9cfbe', brownTile: '#9a7560', terrazzo: '#d4cfc6',
+};
 function currentLevel() {
   let idx = 0;
   LEVELS.forEach((l, i) => { if (feet.y >= l.z / 100 - 0.4) idx = i; });

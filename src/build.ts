@@ -1,7 +1,7 @@
 import * as THREE from 'three';
 import { CSS2DObject } from 'three/examples/jsm/renderers/CSS2DRenderer.js';
 import {
-  FOOTPRINT, LEVELS, Level, ROOF, STAIR, STAIR_HOLE, TERRAIN_Z, Wall, roofHeight,
+  BALCONY, FOOTPRINT, GARAGE, LEVELS, Level, ROOF, Room, STAIR, STAIR_HOLE, TERRAIN_Z, Wall, roofHeight,
 } from './house';
 import context from './context.json';
 
@@ -96,6 +96,45 @@ const floorTex = {
     }
     noise(g, s, 14);
   }),
+  carpet: canvasTex((g, s) => {
+    g.fillStyle = '#9c8f7c'; g.fillRect(0, 0, s, s);
+    for (let i = 0; i < 9000; i++) {
+      g.fillStyle = `hsla(${30 + Math.random() * 15},${12 + Math.random() * 12}%,${46 + Math.random() * 18}%,.5)`;
+      g.fillRect(Math.random() * s, Math.random() * s, 1.5, 1.5);
+    }
+  }),
+  linoleum: canvasTex((g, s) => {
+    g.fillStyle = '#b9c0ad'; g.fillRect(0, 0, s, s);
+    for (let i = 0; i < 60; i++) {
+      g.strokeStyle = `rgba(${Math.random() < 0.5 ? '255,255,250' : '110,120,100'},.18)`;
+      g.lineWidth = 1 + Math.random() * 3;
+      g.beginPath();
+      let x = Math.random() * s, y = Math.random() * s;
+      g.moveTo(x, y);
+      for (let k = 0; k < 6; k++) { x += (Math.random() - 0.5) * 60; y += (Math.random() - 0.5) * 60; g.lineTo(x, y); }
+      g.stroke();
+    }
+    noise(g, s, 6);
+  }),
+  brownTile: canvasTex((g, s) => {
+    g.fillStyle = '#4e3426'; g.fillRect(0, 0, s, s);
+    const n = 4, t = s / n;
+    for (let i = 0; i < n; i++) for (let j = 0; j < n; j++) {
+      g.fillStyle = `hsl(22,${38 + Math.random() * 8}%,${27 + Math.random() * 6}%)`;
+      g.fillRect(i * t + 2, j * t + 2, t - 4, t - 4);
+    }
+    noise(g, s, 10);
+  }),
+  terrazzo: canvasTex((g, s) => {
+    g.fillStyle = '#c9c4ba'; g.fillRect(0, 0, s, s);
+    const cols = ['#8d8478', '#6f6a62', '#e8e3d9', '#a8927a', '#56504a', '#b7ab98'];
+    for (let i = 0; i < 1400; i++) {
+      g.fillStyle = cols[(Math.random() * cols.length) | 0];
+      const r = 0.8 + Math.random() * 2.6;
+      g.beginPath(); g.ellipse(Math.random() * s, Math.random() * s, r, r * (0.5 + Math.random() * 0.5), Math.random() * 3, 0, 7); g.fill();
+    }
+    noise(g, s, 6);
+  }),
   concrete: canvasTex((g, s) => {
     g.fillStyle = '#a9a69f'; g.fillRect(0, 0, s, s);
     noise(g, s, 30);
@@ -104,7 +143,65 @@ const floorTex = {
 const floorMats = Object.fromEntries(
   Object.entries(floorTex).map(([k, t]) => [k, track(new THREE.MeshStandardMaterial({ map: t, roughness: 0.75 }))]),
 ) as Record<keyof typeof floorTex, THREE.MeshStandardMaterial>;
-const floorRepeat = { wood: 1.6, tile: 1.2, stone: 0.8, concrete: 0.4 };
+const floorRepeat = { wood: 1.6, tile: 1.2, stone: 0.8, concrete: 0.4, carpet: 1, linoleum: 0.6, brownTile: 1.25, terrazzo: 0.7 };
+
+// bílý obklad 15 × 15 cm
+const wallTileTex = canvasTex((g, s) => {
+  g.fillStyle = '#c9cdcf'; g.fillRect(0, 0, s, s);
+  const n = 4, t = s / n;
+  for (let i = 0; i < n; i++) for (let j = 0; j < n; j++) {
+    g.fillStyle = `hsl(200,8%,${94 + Math.random() * 3}%)`;
+    g.fillRect(i * t + 1.5, j * t + 1.5, t - 3, t - 3);
+  }
+});
+const wallTileMat = track(new THREE.MeshStandardMaterial({ map: wallTileTex, roughness: 0.25, metalness: 0.05 }));
+const TILE_REPEAT = 100 / 60; // 4 dlaždice na 60 cm
+
+/** Obklad stěn místnosti do výšky H, s vynechanými otvory (dveře, okna). */
+function buildWallTiles(room: Room, lv: Level, parent: THREE.Object3D) {
+  const H = room.wallTiles!;
+  const [x0, y0, x1, y1] = room.r;
+  const off = 0.6; // cm od líce zdi
+  const sides = [
+    { fixed: y0, axis: 'x', range: [x0, x1], match: (w: Wall) => Math.abs(w.r[3] - y0) < 2, rot: 0, pos: (a: number) => [a, y0 + off] },
+    { fixed: y1, axis: 'x', range: [x0, x1], match: (w: Wall) => Math.abs(w.r[1] - y1) < 2, rot: Math.PI, pos: (a: number) => [a, y1 - off] },
+    { fixed: x0, axis: 'y', range: [y0, y1], match: (w: Wall) => Math.abs(w.r[2] - x0) < 2, rot: Math.PI / 2, pos: (a: number) => [x0 + off, a] },
+    { fixed: x1, axis: 'y', range: [y0, y1], match: (w: Wall) => Math.abs(w.r[0] - x1) < 2, rot: -Math.PI / 2, pos: (a: number) => [x1 - off, a] },
+  ] as const;
+  for (const side of sides) {
+    const [s0, s1] = side.range;
+    const ops = lv.walls
+      .filter((w) => side.match(w) && (side.axis === 'x' ? w.r[0] < s1 && w.r[2] > s0 : w.r[1] < s1 && w.r[3] > s0))
+      .flatMap((w) => w.o ?? [])
+      .filter((o) => o.b > s0 && o.a < s1)
+      .sort((p, q) => p.a - q.a);
+    const pieces: [number, number, number, number][] = [];
+    let cur = s0;
+    for (const o of ops) {
+      const a = Math.max(o.a, s0), b = Math.min(o.b, s1);
+      if (a > cur) pieces.push([cur, a, 0, H]);
+      if (o.sill > 0) pieces.push([a, b, 0, Math.min(o.sill, H)]);
+      if (o.sill + o.h < H) pieces.push([a, b, o.sill + o.h, H]);
+      cur = Math.max(cur, b);
+    }
+    if (cur < s1) pieces.push([cur, s1, 0, H]);
+    for (const [a, b, za, zb] of pieces) {
+      if (b - a < 1 || zb - za < 1) continue;
+      const pg = new THREE.PlaneGeometry(M(b - a), M(zb - za));
+      const uv = pg.attributes.uv as THREE.BufferAttribute;
+      for (let i = 0; i < uv.count; i++) {
+        uv.setXY(i, M(a + uv.getX(i) * (b - a)) * TILE_REPEAT, M(za + uv.getY(i) * (zb - za)) * TILE_REPEAT);
+      }
+      const m = new THREE.Mesh(pg, wallTileMat);
+      const [px, py] = side.pos((a + b) / 2);
+      m.position.set(M(px), M(lv.z + (za + zb) / 2), M(py));
+      m.rotation.y = side.rot;
+      m.receiveShadow = true;
+      m.raycast = () => {};
+      parent.add(m);
+    }
+  }
+}
 
 // ---------------------------------------------------------------- geometrie
 /** Kvádr v cm (půdorysné x,y; výška z). Vrchní plocha může být oříznuta funkcí top (např. střechou). */
@@ -302,7 +399,19 @@ export function buildHouse(scene: THREE.Scene) {
     const slab = addMesh(g, slabG, slabMat);
 
     // balkon ve výřezu
-    if (lv.id === 'P' || lv.id === '1P') sb.add(0, 900, 350, 1360, lv.z - 20, lv.z);
+    if (lv.id === 'P' || lv.id === '1P') sb.add(BALCONY[0], BALCONY[1], BALCONY[2], BALCONY[3], lv.z - 20, lv.z);
+    // garáž: zvýšená podlaha + sjezd z ulice s opěrnými zídkami
+    if (lv.id === 'S') {
+      const [gx0, gy0, gx1, gy1] = GARAGE.room;
+      sb.add(gx0, gy0, gx1, gy1, lv.z, lv.z + GARAGE.floor);
+      const [rx0, ry0, rx1, ry1] = GARAGE.ramp;
+      const bottom = lv.z + GARAGE.floor;
+      const rampTop = (_x: number, y: number) => bottom + ((y - ry0) / (ry1 - ry0)) * (TERRAIN_Z - bottom);
+      sb.add(rx0, ry0 - 45, rx1, ry0, bottom - 20, bottom); // práh ve vratech
+      sb.add(rx0, ry0, rx1, ry1, bottom - 30, TERRAIN_Z, rampTop);
+      wb.add(rx0 - 20, ry0, rx0, ry1, bottom - 30, TERRAIN_Z + 15);
+      wb.add(rx1, ry0, rx1 + 20, ry1, bottom - 30, TERRAIN_Z + 15);
+    }
     // schodiště nahoru z tohoto podlaží
     if (idx < LEVELS.length - 1) buildStairs(lv.z, sb, rb);
 
@@ -324,10 +433,11 @@ export function buildHouse(scene: THREE.Scene) {
       for (let i = 0; i < uv.count; i++) uv.setXY(i, uv.getX(i) * w * rep, uv.getY(i) * d * rep);
       const fm = new THREE.Mesh(pg, floorMats[r.floor]);
       fm.rotation.x = -Math.PI / 2;
-      fm.position.set(M((x0 + x1) / 2), M(lv.z) + 0.004, M((y0 + y1) / 2));
+      fm.position.set(M((x0 + x1) / 2), M(lv.z + (r.dz ?? 0)) + 0.004, M((y0 + y1) / 2));
       fm.receiveShadow = true;
       g.add(fm);
       floors.push(fm);
+      if (r.wallTiles) buildWallTiles(r, lv, g);
       if (r.name && r.name !== 'Schodiště') {
         const el = document.createElement('div');
         el.className = 'room-label';
@@ -411,6 +521,13 @@ export function buildSurroundings(scene: THREE.Scene) {
     new THREE.Vector2(size, size), new THREE.Vector2(-size, size),
   ]);
   ground.holes.push(new THREE.Path(FOOTPRINT.map(([x, y]) => new THREE.Vector2(M(x), M(y))).reverse()));
+  {
+    const [rx0, ry0, rx1, ry1] = GARAGE.ramp; // výkop pro sjezd do garáže
+    ground.holes.push(new THREE.Path([
+      new THREE.Vector2(M(rx0 - 20), M(ry0 + 1)), new THREE.Vector2(M(rx0 - 20), M(ry1)),
+      new THREE.Vector2(M(rx1 + 20), M(ry1)), new THREE.Vector2(M(rx1 + 20), M(ry0 + 1)),
+    ]));
+  }
   const gg = new THREE.ShapeGeometry(ground);
   gg.rotateX(Math.PI / 2);
   const groundMat = new THREE.MeshStandardMaterial({

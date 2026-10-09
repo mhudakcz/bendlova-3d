@@ -20,8 +20,31 @@ export type Wall = {
 export type Room = {
   name: string;
   r: [number, number, number, number];
-  floor: 'wood' | 'tile' | 'concrete' | 'stone';
+  floor: FloorType;
+  wallTiles?: number; // výška obkladu stěn (cm)
+  dz?: number; // podlaha zvýšená nad úroveň podlaží (cm)
 };
+
+export type FloorType =
+  | 'wood' // plovoucí podlaha
+  | 'carpet'
+  | 'linoleum'
+  | 'brownTile'
+  | 'terrazzo' // kamenitá podlaha
+  | 'tile'
+  | 'concrete'
+  | 'stone';
+
+// Garáž v suterénu pod obývákem – vjezd z ulice po sjezdu do vyhloubení
+export const GARAGE = {
+  room: [395, 805, 830, 1355] as [number, number, number, number],
+  floor: 45, // podlaha garáže nad podlahou suterénu (cm) → −2,55 m
+  gate: [495, 735] as [number, number], // vrata v uliční zdi
+  ramp: [480, 1400, 750, 1760] as [number, number, number, number], // sjezd (x0, y0, x1, y1)
+};
+
+// Balkon v rohu výřezu: celá šířka výřezu (350 cm), hloubka 150 cm od zdi ložnice
+export const BALCONY: [number, number, number, number] = [0, 900, 350, 1050];
 
 export type Level = {
   id: string;
@@ -94,7 +117,7 @@ function outerWalls(level: 'S' | 'P' | '1P'): Wall[] {
     {
       r: [395, 1355, 1100, 1400],
       o: isS
-        ? [win(600, 750, 160, 50), door(880, 975, 150, 150)] // vstupní dveře (spodní část)
+        ? [door(GARAGE.gate[0], GARAGE.gate[1], 300 - GARAGE.floor - 40, GARAGE.floor), door(880, 975, 150, 150)] // vrata garáže, vstupní dveře (spodní část)
         : level === 'P'
           ? [win(600, 750), door(880, 975, 85, 0)]
           : [win(600, 750), win(900, 1030, 60, 200)],
@@ -129,26 +152,30 @@ function flatWalls(level: 'P' | '1P'): Wall[] {
     { r: [395, 760, 830, 770], o: [door(460, 540), door(680, 820)] }, // ložnice/předsíň | obývák
     { r: [560, 770, 650, 800], h: 300 }, // komín S.P.I.
     // balkon ve výřezu
-    { r: [0, 900, 8, 1360], h: 100, kind: 'railing' },
-    { r: [0, 1352, 350, 1360], h: 100, kind: 'railing' },
+    { r: [0, 900, 8, BALCONY[3]], h: 100, kind: 'railing' },
+    { r: [0, BALCONY[3] - 8, 350, BALCONY[3]], h: 100, kind: 'railing' },
   ];
 }
 
-function flatRooms(): Room[] {
+function flatRooms(level: 'P' | '1P'): Room[] {
+  // Přízemí: plovoucí podlahy všude kromě koupelny (hnědá dlažba, bílý obklad) a WC.
+  // 1. patro: koberce v pokojích a předsíni, linoleum v kuchyni, kamenitá podlaha v koupelně.
+  const P = level === 'P';
+  const room: FloorType = P ? 'wood' : 'carpet';
   return [
-    { name: 'Ložnice', r: [45, 45, 575, 405], floor: 'wood' },
-    { name: 'Ložnice', r: [45, 415, 575, 760], floor: 'wood' },
-    { name: '', r: [45, 760, 395, 855], floor: 'wood' },
-    { name: 'Koupelna', r: [590, 45, 785, 262], floor: 'tile' },
-    { name: 'Spíž', r: [730, 272, 785, 476], floor: 'tile' },
-    { name: '', r: [590, 272, 720, 486], floor: 'tile' },
-    { name: 'Kuchyň', r: [795, 45, 1070, 476], floor: 'tile' },
-    { name: 'Předsíň', r: [590, 486, 960, 760], floor: 'stone' },
+    { name: 'Ložnice', r: [45, 45, 575, 405], floor: room },
+    { name: 'Ložnice', r: [45, 415, 575, 760], floor: room },
+    { name: '', r: [45, 760, 395, 855], floor: room },
+    { name: 'Koupelna', r: [590, 45, 785, 262], floor: P ? 'brownTile' : 'terrazzo', wallTiles: P ? 200 : undefined },
+    { name: 'Spíž', r: [730, 272, 785, 476], floor: P ? 'wood' : 'linoleum' },
+    { name: '', r: [590, 272, 720, 486], floor: room },
+    { name: 'Kuchyň', r: [795, 45, 1070, 476], floor: P ? 'wood' : 'linoleum' },
+    { name: 'Předsíň', r: [590, 486, 960, 760], floor: room },
     { name: 'WC', r: [970, 486, 1070, 612], floor: 'tile' },
-    { name: 'Komora', r: [970, 665, 1070, 760], floor: 'stone' },
-    { name: 'Obývací pokoj', r: [395, 770, 830, 1355], floor: 'wood' },
+    { name: 'Komora', r: [970, 665, 1070, 760], floor: room },
+    { name: 'Obývací pokoj', r: [395, 770, 830, 1355], floor: room },
     { name: 'Schodiště', r: [860, 770, 1070, 870], floor: 'stone' },
-    { name: 'Balkon', r: [0, 900, 350, 1360], floor: 'stone' },
+    { name: 'Balkon', r: BALCONY, floor: 'stone' },
   ];
 }
 
@@ -166,7 +193,7 @@ const basementRooms: Room[] = [
   { name: 'Sklad', r: [610, 45, 785, 300], floor: 'concrete' },
   { name: 'Prádelna', r: [800, 45, 1070, 300], floor: 'tile' },
   { name: 'Chodba', r: [610, 315, 1070, 760], floor: 'concrete' },
-  { name: 'Sklep', r: [395, 805, 830, 1355], floor: 'concrete' },
+  { name: 'Garáž', r: GARAGE.room, floor: 'concrete', dz: GARAGE.floor },
   { name: 'Schodiště', r: [860, 770, 1070, 870], floor: 'stone' },
 ];
 
@@ -206,8 +233,8 @@ const atticRooms: Room[] = [
 
 export const LEVELS: Level[] = [
   { id: 'S', name: 'Suterén', z: -300, height: 300, walls: basementWalls, rooms: basementRooms, slab: 'full', spawn: [720, 600] },
-  { id: 'P', name: 'Přízemí', z: 0, height: 300, walls: flatWalls('P'), rooms: flatRooms(), slab: 'full', spawn: [780, 640] },
-  { id: '1P', name: '1. patro', z: 300, height: 300, walls: flatWalls('1P'), rooms: flatRooms(), slab: 'full', spawn: [780, 640] },
+  { id: 'P', name: 'Přízemí', z: 0, height: 300, walls: flatWalls('P'), rooms: flatRooms('P'), slab: 'full', spawn: [780, 640] },
+  { id: '1P', name: '1. patro', z: 300, height: 300, walls: flatWalls('1P'), rooms: flatRooms('1P'), slab: 'full', spawn: [780, 640] },
   { id: 'A', name: 'Podkroví', z: 600, height: BIG, walls: atticWalls, rooms: atticRooms, slab: 'full', spawn: [740, 640] },
 ];
 
