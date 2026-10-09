@@ -43,6 +43,9 @@ export const GARAGE = {
   ramp: [445, 1400, 790, 1760] as [number, number, number, number], // sjezd (x0, y0, x1, y1)
 };
 
+// Schody ze sjezdu do garáže nahoru na terén (vlevo od vrat, podél fasády) – cesta do zahrady
+export const GARDEN_STEPS = { x0: 257, x1: 425, y0: 1405, y1: 1520, n: 6 };
+
 // Balkon v rohu výřezu: celá šířka výřezu (350 cm), hloubka 150 cm od zdi ložnice
 export const BALCONY: [number, number, number, number] = [0, 900, 350, 1050];
 

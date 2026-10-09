@@ -12,7 +12,7 @@ const G = TERRAIN_Z / 100; // výška terénu (m)
 // Plot pozemku – odměřeno z leteckého snímku (žlutá čára), metry v souřadnicích půdorysu.
 const FENCE_BACK: Pt[] = [
   [11.0, 0.0], [11.47, -1.43], [10.09, -25.38], [-30.81, -17.62], [-30.16, 6.44],
-  [-2.77, 7.19], [-1.3, 11.6], [1.55, 11.7], [2.46, 18.6],
+  [-2.77, 7.19], [-1.3, 11.65], [2.46, 11.65], [2.46, 18.6], // u balkonů pravý úhel
 ];
 const STREET_FENCE: [Pt, Pt] = [[2.46, 18.75], [12.27, 18.85]];
 const FENCE_SIDE: Pt[] = [[12.27, 18.85], [12.08, 15.4], [11.0, 15.3]];
@@ -21,7 +21,7 @@ const HOUSE_GATE: [number, number] = [8.75, 9.8];
 // zahrada za domem (trávník)
 const GARDEN: Pt[] = [
   [11.0, 0.0], [11.47, -1.43], [10.09, -25.38], [-30.81, -17.62], [-30.16, 6.44],
-  [-2.77, 7.19], [-1.3, 11.6], [0, 11.6], [0, 0],
+  [-2.77, 7.19], [-1.3, 11.65], [0, 11.65], [0, 0],
 ];
 
 function canvasTex(size: number, draw: (g: CanvasRenderingContext2D, s: number) => void, repeatMeters: number) {

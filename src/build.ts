@@ -1,7 +1,7 @@
 import * as THREE from 'three';
 import { CSS2DObject } from 'three/examples/jsm/renderers/CSS2DRenderer.js';
 import {
-  BALCONY, FOOTPRINT, GARAGE, LEVELS, Level, ROOF, Room, STAIR, STAIR_FRONT, STAIR_HOLE, TERRAIN_Z, Wall, roofFaces, roofHeight, DORMER, dormerRoofZ,
+  BALCONY, FOOTPRINT, GARAGE, GARDEN_STEPS, LEVELS, Level, ROOF, Room, STAIR, STAIR_FRONT, STAIR_HOLE, TERRAIN_Z, Wall, roofFaces, roofHeight, DORMER, dormerRoofZ,
 } from './house';
 import context from './context.json';
 
@@ -453,8 +453,17 @@ export function buildHouse(scene: THREE.Scene) {
       const rampTop = (_x: number, y: number) => bottom + ((y - ry0) / (ry1 - ry0)) * (TERRAIN_Z - bottom);
       pb.add(rx0, ry0 - 45, rx1, ry0, bottom - 20, bottom); // práh ve vratech
       pb.add(rx0, ry0, rx1, ry1, bottom - 30, TERRAIN_Z, rampTop);
-      wb.add(rx0 - 20, ry0, rx0, ry1, bottom - 30, TERRAIN_Z + 15);
+      wb.add(rx0 - 20, GARDEN_STEPS.y1 + 20, rx0, ry1, bottom - 30, TERRAIN_Z + 15);
       wb.add(rx1, ry0, rx1 + 20, ry1, bottom - 30, TERRAIN_Z + 15);
+      // schody ze sjezdu nahoru na terén (cesta kolem domu do zahrady)
+      const { x0: sx0, x1: sx1, y0: sy0, y1: sy1, n } = GARDEN_STEPS;
+      const base = -240, rise = (TERRAIN_Z - base) / n, run = (sx1 - sx0) / n;
+      pb.add(sx1, sy0, rx0, sy1, base - 30, base); // nástupní plocha u sjezdu
+      for (let i = 0; i < n; i++) {
+        const t = base + rise * (i + 1);
+        pb.add(sx1 - run * (i + 1), sy0, sx1 - run * i, sy1, base - 30, t);
+      }
+      wb.add(sx0, sy1, rx0, sy1 + 20, base - 30, TERRAIN_Z + 15); // opěrná zídka schodů
     }
     // schodiště nahoru z tohoto podlaží
     if (idx < LEVELS.length - 1) buildStairs(lv.z, sb, wb);
@@ -595,11 +604,13 @@ export function buildSurroundings(scene: THREE.Scene) {
   ]);
   ground.holes.push(new THREE.Path(FOOTPRINT.map(([x, y]) => new THREE.Vector2(M(x), M(y))).reverse()));
   {
-    const [rx0, ry0, rx1, ry1] = GARAGE.ramp; // výkop pro sjezd do garáže
-    ground.holes.push(new THREE.Path([
-      new THREE.Vector2(M(rx0 - 20), M(ry0 + 1)), new THREE.Vector2(M(rx0 - 20), M(ry1)),
-      new THREE.Vector2(M(rx1 + 20), M(ry1)), new THREE.Vector2(M(rx1 + 20), M(ry0 + 1)),
-    ]));
+    const [rx0, ry0, rx1, ry1] = GARAGE.ramp; // výkop pro sjezd do garáže a schody vedle něj
+    const { x0: sx0, y1: sy1 } = GARDEN_STEPS;
+    const hole: [number, number][] = [
+      [sx0, ry0 + 1], [sx0, sy1 + 20], [rx0 - 20, sy1 + 20], [rx0 - 20, ry1],
+      [rx1 + 20, ry1], [rx1 + 20, ry0 + 1],
+    ];
+    ground.holes.push(new THREE.Path(hole.map(([x, y]) => new THREE.Vector2(M(x), M(y)))));
   }
   const gg = new THREE.ShapeGeometry(ground);
   gg.rotateX(Math.PI / 2);
