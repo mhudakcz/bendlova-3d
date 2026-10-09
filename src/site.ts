@@ -3,6 +3,7 @@
 import * as THREE from 'three';
 import { TERRAIN_Z } from './house';
 import context from './context.json';
+import { Door, makeLeaf } from './doors';
 
 type Pt = [number, number];
 type Ctx = { roads: { kind: string; name: string; pts: Pt[] }[] };
@@ -561,39 +562,48 @@ export function buildSite(scene: THREE.Scene) {
   fence(group, colliders, sa, at(GARAGE_GATE[0]), { base: 0.6, h: 1.0 });
   fence(group, colliders, at(GARAGE_GATE[1]), at(HOUSE_GATE[0]), { base: 0.6, h: 1.0 });
   fence(group, colliders, at(HOUSE_GATE[1]), sb, { base: 0.6, h: 1.0 });
-  // vrata ke garáži (dvě křídla, dole plný plech, nahoře pletivo)
+  // vrata ke garáži (dvě křídla, dole plný plech, nahoře pletivo) – otevíratelná dovnitř
+  const doors: Door[] = [];
   const gw = (GARAGE_GATE[1] - GARAGE_GATE[0]) / 2;
-  for (let k = 0; k < 2; k++) {
-    const x0 = GARAGE_GATE[0] + k * gw;
-    const [cx, cy] = at(x0 + gw / 2);
-    const leaf = new THREE.Group();
-    const sheet = new THREE.Mesh(new THREE.BoxGeometry(gw - 0.06, 0.75, 0.04), fenceGreen);
-    sheet.position.y = 0.45;
-    const mesh = new THREE.Mesh(new THREE.PlaneGeometry(gw - 0.06, 0.75), fenceMeshMat);
-    mesh.position.y = 1.2;
-    const frame = new THREE.Mesh(new THREE.BoxGeometry(gw - 0.02, 0.05, 0.05), fenceGreen);
-    frame.position.y = 1.58;
-    leaf.add(sheet, mesh, frame);
-    leaf.position.set(cx, G, cy);
-    leaf.rotation.y = -Math.atan2(sb[1] - sa[1], sb[0] - sa[0]);
-    group.add(leaf);
-    colliders.push(sheet, mesh);
+  const fenceAng = -Math.atan2(sb[1] - sa[1], sb[0] - sa[0]);
+  const gateLeaf = (hd: THREE.Group, w: number) => {
+    const sheet = new THREE.Mesh(new THREE.BoxGeometry(w, 0.75, 0.04), fenceGreen);
+    sheet.position.set(w / 2, 0.45, 0);
+    const mesh = new THREE.Mesh(new THREE.PlaneGeometry(w - 0.04, 0.75), fenceMeshMat);
+    mesh.position.set(w / 2, 1.2, 0);
+    const frame = new THREE.Mesh(new THREE.BoxGeometry(w, 0.05, 0.05), fenceGreen);
+    frame.position.set(w / 2, 1.58, 0);
+    hd.add(sheet, mesh, frame);
+    return [sheet, mesh];
+  };
+  {
+    const h0 = at(GARAGE_GATE[0]), h1 = at(GARAGE_GATE[1]);
+    const d0 = makeLeaf(group, [h0[0], G, h0[1]], gw, gateLeaf, Math.PI / 2, 'vrata-ulice');
+    const d1 = makeLeaf(group, [h1[0], G, h1[1]], gw, gateLeaf, -Math.PI / 2, 'vrata-ulice', Math.PI);
+    for (const d of [d0, d1]) d.pivot.rotation.y = fenceAng;
+    doors.push(d0, d1);
   }
-  // branka ke vstupu (pozinkovaná, otevřená dovnitř)
+  // branka ke vstupu (pozinkovaná) – otevírá se dovnitř
   {
     const w = HOUSE_GATE[1] - HOUSE_GATE[0];
     const hinge = at(HOUSE_GATE[1]);
-    const leaf = new THREE.Group();
-    const m = new THREE.Mesh(new THREE.PlaneGeometry(w, 1.5), new THREE.MeshStandardMaterial({ map: meshTex, transparent: true, alphaTest: 0.3, side: THREE.DoubleSide, color: '#d7dadc', metalness: 0.5, roughness: 0.4 }));
-    m.position.set(-w / 2, 0.8, 0);
-    const fr = new THREE.Mesh(new THREE.BoxGeometry(w, 0.04, 0.04), zincMat);
-    fr.position.set(-w / 2, 1.55, 0);
-    leaf.add(m, fr);
-    leaf.position.set(hinge[0], G, hinge[1]);
-    leaf.rotation.y = -Math.PI / 2 + 0.25; // otevřená dovnitř pozemku
-    group.add(leaf);
+    const gateMat = new THREE.MeshStandardMaterial({ map: meshTex, transparent: true, alphaTest: 0.3, side: THREE.DoubleSide, color: '#d7dadc', metalness: 0.5, roughness: 0.4 });
+    const d = makeLeaf(group, [hinge[0], G, hinge[1]], w, (hd, ww) => {
+      const plate = new THREE.Mesh(new THREE.BoxGeometry(ww - 0.04, 0.6, 0.03), zincMat);
+      plate.position.set(ww / 2, 0.35, 0);
+      const m = new THREE.Mesh(new THREE.PlaneGeometry(ww - 0.04, 0.9), gateMat);
+      m.position.set(ww / 2, 1.1, 0);
+      const fr = new THREE.Mesh(new THREE.BoxGeometry(ww, 0.04, 0.04), zincMat);
+      fr.position.set(ww / 2, 1.55, 0);
+      hd.add(plate, m, fr);
+      return [plate, m];
+    }, -Math.PI / 2, 'branka', Math.PI);
+    d.pivot.rotation.y = fenceAng;
+    doors.push(d);
   }
+  // úhel plotu se k otevření přičítá (viz main.ts – baseAngle)
+  for (const d of doors) (d as Door & { base?: number }).base = fenceAng;
 
   scene.add(group);
-  return { site: group, colliders, walkables };
+  return { site: group, colliders, walkables, doors };
 }

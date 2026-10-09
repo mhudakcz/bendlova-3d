@@ -4,6 +4,7 @@ import {
   BALCONY, BOILER, DOG_STEPS, FOOTPRINT, GARAGE, GARDEN_STEPS, SKLAD_PIT, LEVELS, Level, ROOF, Room, STAIR, STAIR_FRONT, STAIR_HOLE, TERRAIN_Z, Wall, roofFaces, roofHeight, DORMER, dormerRoofZ,
 } from './house';
 import context from './context.json';
+import { Door, makeLeaf } from './doors';
 
 const M = (v: number) => v / 100; // cm -> m
 type TopFn = ((x: number, y: number) => number) | null;
@@ -84,7 +85,7 @@ const railTubeMat = track(new THREE.MeshStandardMaterial({ color: '#3f7a5e', rou
 const frameMat = track(new THREE.MeshStandardMaterial({ color: '#fbfbf8', roughness: 0.5 }));
 const glassMat = track(
   new THREE.MeshPhysicalMaterial({
-    color: '#bcd6e6', transparent: true, opacity: 0.28, roughness: 0.05, metalness: 0.1,
+    color: '#9cc8e6', transparent: true, opacity: 0.38, roughness: 0.04, metalness: 0.15, // jemně modré sklo
     side: THREE.DoubleSide, depthWrite: false,
   }),
 );
@@ -335,7 +336,6 @@ const wallColor = (cx: number, cy: number, nx: number, ny: number) => {
   return COL.plaster;
 };
 
-export type HouseDoor = { pivot: THREE.Group; leaf: THREE.Mesh; open: boolean; angle: number };
 
 export type LevelObj = {
   level: Level;
@@ -400,17 +400,30 @@ function buildWall(w: Wall, lv: Level, wb: BoxBuilder, rb: BoxBuilder, fb: BoxBu
   }
   for (const o of ops) {
     if (o.kind === 'window') {
-      // rám + sklo uprostřed tloušťky zdi
-      const f = 5;
+      // plastové okno: bílý rám, křídla (2–3 podle šířky), modravé poloprůhledné sklo
+      const f = 7; // šířka profilu rámu
       const zs = zb + o.sill, ze = zb + o.sill + o.h;
       const mid = alongX ? (y0 + y1) / 2 : (x0 + x1) / 2;
-      const fr = (a: number, b: number, za: number, zz: number) =>
-        alongX ? fb.add(a, mid - 4, b, mid + 4, za, zz) : fb.add(mid - 4, a, mid + 4, b, za, zz);
+      const fr = (a: number, b: number, za: number, zz: number, d = 5) =>
+        alongX ? fb.add(a, mid - d, b, mid + d, za, zz) : fb.add(mid - d, a, mid + d, b, za, zz);
       fr(o.a, o.b, zs, zs + f);
       fr(o.a, o.b, ze - f, ze);
       fr(o.a, o.a + f, zs, ze);
       fr(o.b - f, o.b, zs, ze);
-      fr((o.a + o.b) / 2 - 2.5, (o.a + o.b) / 2 + 2.5, zs, ze);
+      const W = o.b - o.a;
+      const panes = W > 180 ? 3 : W > 70 ? 2 : 1;
+      for (let k = 1; k < panes; k++) {
+        const c = o.a + (W * k) / panes;
+        fr(c - 4, c + 4, zs, ze); // sloupek mezi křídly
+      }
+      // obvod jednotlivých křídel (tenčí profil uvnitř rámu)
+      for (let k = 0; k < panes; k++) {
+        const a0 = o.a + (W * k) / panes + (k === 0 ? f : 4), a1 = o.a + (W * (k + 1)) / panes - (k === panes - 1 ? f : 4);
+        fr(a0, a1, zs + f, zs + f + 5, 3.5);
+        fr(a0, a1, ze - f - 5, ze - f, 3.5);
+        fr(a0, a0 + 5, zs + f, ze - f, 3.5);
+        fr(a1 - 5, a1, zs + f, ze - f, 3.5);
+      }
       const pg = new THREE.PlaneGeometry(M(o.b - o.a), M(o.h));
       const pm = new THREE.Mesh(pg, glassMat);
       pm.position.set(alongX ? M((o.a + o.b) / 2) : M(mid), M((zs + ze) / 2), alongX ? M(mid) : M((o.a + o.b) / 2));
@@ -535,7 +548,7 @@ export function buildHouse(scene: THREE.Scene) {
     // balkon ve výřezu
     const pb = new BoxBuilder(); // zpevněné plochy: balkon, garáž, sjezd
     const cb = new BoxBuilder(); // neviditelné zábrany pro chůzi
-    const rampB = new BoxBuilder(), drainB = new BoxBuilder(), doorB = new BoxBuilder();
+    const rampB = new BoxBuilder(), drainB = new BoxBuilder();
     const zb = new BoxBuilder(); // pozinkované ocelové prvky
     const zincRails = new THREE.Group();
     const gb = new BoxBuilder(); // zelené plechové prvky (stříška nad garáží)
@@ -621,11 +634,7 @@ export function buildHouse(scene: THREE.Scene) {
       drainB.add(rx0, ry0 + 5, rx1, ry0 + 20, bottom - 5, bottom + 1); // odvodňovací žlab před vraty
       wb.add(rx0 - 20, GARDEN_STEPS.y1 + 20, rx0, ry1, bottom - 30, TERRAIN_Z + 15);
       wb.add(rx1, ry0, rx1 + 20, ry1, bottom - 30, TERRAIN_Z + 30); // vyšší zídka k záhonu u vstupu
-      // hnědá dvoukřídlá vrata garáže (zavřená)
-      const [g0, g1] = GARAGE.gate, gm = (g0 + g1) / 2;
-      doorB.add(g0, 1374, gm - 1, 1380, bottom, -40);
-      doorB.add(gm + 1, 1374, g1, 1380, bottom, -40);
-      cb.add(g0, 1372, g1, 1382, bottom, -40);
+      // vrata garáže jsou otevíratelná (viz níže – dveře)
       // schody ze sjezdu nahoru na terén (cesta kolem domu do zahrady)
       const { x0: sx0, x1: sx1, y0: sy0, y1: sy1, n } = GARDEN_STEPS;
       const base = Math.round(rampTop(0, (sy0 + sy1) / 2)), rise = (TERRAIN_Z - base) / n, run = (sx1 - sx0) / n; // od úrovně sjezdu
@@ -650,7 +659,7 @@ export function buildHouse(scene: THREE.Scene) {
     const paved = addMesh(g, pb.geometry(), pavedMat);
     const ramp = addMesh(g, rampB.geometry(), rampMat, false);
     addMesh(g, drainB.geometry(), drainMat, false);
-    addMesh(g, doorB.geometry(), garageDoorMat, false);
+
     const zinc = addMesh(g, zb.geometry(), zincMat, false);
     g.add(zincRails);
     addMesh(g, gb.geometry(), greenMat);
@@ -762,25 +771,59 @@ export function buildHouse(scene: THREE.Scene) {
   addMesh(roof, cb.geometry(), chimneyMat).material = track(new THREE.MeshStandardMaterial({ vertexColors: true, roughness: 0.9 }));
   house.add(roof);
 
-  // vchodové dveře (otevíratelné) – v předsazené uliční zdi, otevírají se dovnitř
-  const doors: HouseDoor[] = [];
+  // otevíratelné dveře a vrata (F / klik / klepnutí)
+  const doors: Door[] = [];
+  const box = (holder: THREE.Object3D, w: number, h: number, t: number, x: number, y: number, mat: THREE.Material) => {
+    const m = new THREE.Mesh(new THREE.BoxGeometry(w, h, t), mat);
+    m.position.set(x, y, 0);
+    holder.add(m);
+    return m;
+  };
+  const handleMat = track(new THREE.MeshStandardMaterial({ color: '#c9c9c9', metalness: 0.8, roughness: 0.3 }));
+  // vchodové dveře – v předsazené uliční zdi, otevírají se dovnitř
   {
-    const a = 880, b = 975, zb = TERRAIN_Z, h = 220, yIn = STAIR_FRONT.y - STAIR_FRONT.t + 4;
-    const pivot = new THREE.Group();
-    pivot.position.set(M(a + 2), M(zb), M(yIn));
+    const a = 880, b = 975, h = 220, yIn = STAIR_FRONT.y - STAIR_FRONT.t + 4;
     const leafMat = track(new THREE.MeshStandardMaterial({ color: '#4b3326', roughness: 0.6 }));
-    const leaf = new THREE.Mesh(new THREE.BoxGeometry(M(b - a - 4), M(h), M(5)), leafMat);
-    leaf.position.set(M((b - a - 4) / 2), M(h / 2), 0);
-    leaf.castShadow = leaf.receiveShadow = true;
-    const glassPane = new THREE.Mesh(new THREE.BoxGeometry(M(50), M(110), M(6)), glassMat);
-    glassPane.position.set(M((b - a - 4) / 2), M(140), 0);
-    glassPane.raycast = () => {};
-    const handle = new THREE.Mesh(new THREE.BoxGeometry(M(14), M(3), M(12)), track(new THREE.MeshStandardMaterial({ color: '#c9c9c9', metalness: 0.8, roughness: 0.3 })));
-    handle.position.set(M(b - a - 14), M(105), 0);
-    handle.raycast = () => {};
-    pivot.add(leaf, glassPane, handle);
-    levels[0].group.add(pivot);
-    doors.push({ pivot, leaf, open: false, angle: 0 });
+    doors.push(makeLeaf(levels[0].group, [M(a + 2), M(TERRAIN_Z), M(yIn)], M(b - a - 4), (hd, w) => {
+      const leaf = box(hd, w, M(h), M(5), w / 2, M(h / 2), leafMat);
+      const gl = box(hd, M(50), M(110), M(6), w / 2, M(140), glassMat); gl.raycast = () => {};
+      const hn = box(hd, M(14), M(3), M(12), w - M(10), M(105), handleMat); hn.raycast = () => {};
+      return [leaf];
+    }, Math.PI / 2, 'vchod'));
+  }
+  // dvoukřídlá vrata garáže – otevírají se ven na sjezd
+  {
+    const [g0, g1] = GARAGE.gate, gm = (g0 + g1) / 2, zb = -300 + GARAGE.floor, h = 300 - GARAGE.floor - 40;
+    const y = M(1377);
+    const build = (hd: THREE.Group, w: number) => {
+      const leaf = box(hd, w - M(1), M(h), M(5), w / 2, M(h / 2), garageDoorMat);
+      for (const k of [0.33, 0.66]) { const r = box(hd, w - M(6), M(4), M(7), w / 2, M(h) * k, garageDoorMat); r.raycast = () => {}; }
+      return [leaf];
+    };
+    doors.push(makeLeaf(levels[0].group, [M(g0), M(zb), y], M(gm - g0), build, -Math.PI / 2, 'garaz'));
+    doors.push(makeLeaf(levels[0].group, [M(g1), M(zb), y], M(g1 - gm), build, Math.PI / 2, 'garaz', Math.PI));
+  }
+  // balkonové dveře – francouzská okna (přízemí a 1. patro), otevírají se dovnitř
+  for (const lv of levels.filter((l) => l.level.id === 'P' || l.level.id === '1P')) {
+    const a = 130, b = 280, h = 245, z = lv.level.z, y = M(878);
+    const build = (hd: THREE.Group, w: number) => {
+      const fr = 6;
+      const parts = [
+        box(hd, w, M(fr), M(6), w / 2, M(fr / 2), frameMat),
+        box(hd, w, M(fr), M(6), w / 2, M(h - fr / 2), frameMat),
+        box(hd, M(fr), M(h), M(6), M(fr / 2), M(h / 2), frameMat),
+        box(hd, M(fr), M(h), M(6), w - M(fr / 2), M(h / 2), frameMat),
+        box(hd, w, M(fr), M(6), w / 2, M(h * 0.42), frameMat),
+      ];
+      const gl = box(hd, w - M(2 * fr), M(h - 2 * fr), M(2), w / 2, M(h / 2), glassMat);
+      gl.raycast = () => {};
+      // neviditelná plocha přes celé křídlo – pro kliknutí a kolize
+      const hit = box(hd, w, M(h), M(6), w / 2, M(h / 2), new THREE.MeshBasicMaterial({ visible: false }));
+      return [hit, ...parts.slice(0, 0)];
+    };
+    const mid = (a + b) / 2;
+    doors.push(makeLeaf(lv.group, [M(a), M(z), y], M(mid - a), build, Math.PI / 2, `balkon-${lv.level.id}`));
+    doors.push(makeLeaf(lv.group, [M(b), M(z), y], M(b - mid), build, -Math.PI / 2, `balkon-${lv.level.id}`, Math.PI));
   }
   return { house, levels, roof, doors };
 }

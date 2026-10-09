@@ -48,9 +48,10 @@ lamp.visible = false;
 camera.add(lamp);
 scene.add(camera);
 
-const { levels, roof, doors } = buildHouse(scene);
+const { levels, roof, doors: houseDoors } = buildHouse(scene);
 const { context, ground } = buildSurroundings(scene);
-const { colliders: siteColliders, walkables: siteWalkables } = buildSite(scene);
+const { colliders: siteColliders, walkables: siteWalkables, doors: siteDoors } = buildSite(scene);
+const doors = [...houseDoors, ...siteDoors];
 
 // ------------------------------------------------------------------ stav
 type FloorId = 'all' | 'S' | 'P' | '1P' | 'A';
@@ -219,7 +220,7 @@ const feet = new THREE.Vector3();
 let vy = 0;
 const keys = new Set<string>();
 const ray = new THREE.Raycaster();
-const wallTargets = [...levels.flatMap((l) => [l.walls, l.rails, l.colliders]), ...siteColliders, ...doors.map((d) => d.leaf)];
+const wallTargets = [...levels.flatMap((l) => [l.walls, l.rails, l.colliders]), ...siteColliders, ...doors.flatMap((d) => d.parts)];
 const floorTargets = [...levels.flatMap((l) => l.floors), ground, ...siteWalkables];
 
 function spawnAt(where: string) {
@@ -314,13 +315,17 @@ function turn(dYaw: number, dPitch: number) {
 // ---- dveře: otevřít/zavřít kliknutím, klepnutím nebo klávesou F
 const doorRay = new THREE.Raycaster();
 function tryToggleDoor(ndcX: number, ndcY: number) {
+  camera.updateMatrixWorld();
   doorRay.setFromCamera(new THREE.Vector2(ndcX, ndcY), camera);
   doorRay.far = state.mode === 'walk' ? 3.5 : 200;
-  const hit = doorRay.intersectObjects(doors.map((d) => d.leaf), false)[0];
+  const hit = doorRay.intersectObjects(doors.flatMap((d) => d.parts), false)[0];
   if (!hit) return false;
-  const d = doors.find((x) => x.leaf === hit.object)!;
-  d.open = !d.open;
+  toggleDoor(doors.find((x) => x.parts.includes(hit.object as THREE.Mesh))!);
   return true;
+}
+function toggleDoor(d: (typeof doors)[number]) {
+  const open = !d.open;
+  for (const x of doors) if (x.link === d.link) x.open = open; // obě křídla najednou
 }
 
 // ---- ovládání myší / dotykem
@@ -385,8 +390,8 @@ const joy = { x: 0, y: 0 };
   $('#doorBtn').addEventListener('click', () => {
     // nejbližší dveře do 3 m
     const p = camera.position;
-    const d = doors.map((x) => ({ x, dist: x.leaf.getWorldPosition(new THREE.Vector3()).distanceTo(p) })).sort((a, b) => a.dist - b.dist)[0];
-    if (d && d.dist < 3.5) d.x.open = !d.x.open;
+    const d = doors.map((x) => ({ x, dist: x.parts[0].getWorldPosition(new THREE.Vector3()).distanceTo(p) })).sort((a, b) => a.dist - b.dist)[0];
+    if (d && d.dist < 3.5) toggleDoor(d.x);
   });
 }
 
@@ -412,11 +417,15 @@ function blocked(dx: number, dz: number) {
   const len = Math.hypot(dx, dz);
   if (len < 1e-6) return false;
   tmpDir.set(dx / len, 0, dz / len);
+  // paprsky ve třech výškách a také po stranách postavy (aby se neprošlo úzkou mezerou)
+  const sx = -tmpDir.z, sz = tmpDir.x;
   for (const h of [0.45, 1.1, 1.75]) {
-    origin.set(feet.x, feet.y + h, feet.z);
-    ray.set(origin, tmpDir);
-    ray.far = len + RADIUS;
-    if (ray.intersectObjects(wallTargets, false).length) return true;
+    for (const off of [0, -RADIUS * 0.8, RADIUS * 0.8]) {
+      origin.set(feet.x + sx * off, feet.y + h, feet.z + sz * off);
+      ray.set(origin, tmpDir);
+      ray.far = len + (off === 0 ? RADIUS : RADIUS * 0.6);
+      if (ray.intersectObjects(wallTargets, false).length) return true;
+    }
   }
   return false;
 }
@@ -532,9 +541,9 @@ function loop() {
     orbit.update();
   }
   for (const d of doors) {
-    const target = d.open ? Math.PI / 2 : 0;
+    const target = d.open ? d.openAngle : 0;
     d.angle += (target - d.angle) * Math.min(1, dt * 6);
-    d.pivot.rotation.y = d.angle;
+    d.pivot.rotation.y = (d.base ?? 0) + d.angle;
   }
   renderer.render(scene, camera);
   labelRenderer.render(scene, camera);
