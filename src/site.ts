@@ -15,16 +15,18 @@ const FX = 1.0; // úsek plotu kolmo k ulici vedle schodů (předzahrádka s ke�
 // cestička kolem domu a dvorek jsou v úrovni ulice (G); zahrada je o kus výš a mírně stoupá.
 // Zlom terénu podél cestičky je svah, za domem ho řeší zídka mezi dvorkem a zahradou se schody.
 const BREAK_X = -3.5; // zlom terénu (horní hrana svahu) podél boku domu
-const PATH_X: [number, number] = [-2.0, -1.0]; // cestička podél boku domu
+const PATH_X: [number, number] = [-1.0, 0.0]; // cestička těsně podél boku domu
 const YARD_Y = -3.5; // zídka mezi dvorkem a zahradou
-const YARD_STEPS = { x0: -2.0, x1: -1.0, n: 3, run: 0.3 };
+const YARD_STEPS = { x0: -1.0, x1: 0.0, n: 5, run: 0.3 }; // v ose cestičky
+const WALL_ABOVE = 0.3; // zídka dvorku vykukuje 30 cm nad terén zahrady (celkem ~1,2 m)
 const FRONT_YARD_H = 0.2; // předzahrádka je kousek nad chodníkem
 /** výška terénu zahrady (m) – mírný svah směrem od domu */
-const hGarden = (x: number, y: number) => G + 0.5 - 0.015 * (x - BREAK_X) - 0.008 * y;
+const hGarden = (x: number, y: number) => G + 0.9 - 0.015 * (x - BREAK_X) - 0.008 * y;
 // vyvýšená část zahrady (nad zlomem terénu a za zídkou dvorku)
 const HIGH: Pt[] = [
   [11.0, YARD_Y], [10.09, -25.38], [-30.81, -17.62], [-30.16, 6.44], [BREAK_X, 7.17], [BREAK_X, YARD_Y],
-  [YARD_STEPS.x0, YARD_Y], [YARD_STEPS.x0, YARD_Y - 3 * 0.3], [YARD_STEPS.x1, YARD_Y - 3 * 0.3], [YARD_STEPS.x1, YARD_Y],
+  [YARD_STEPS.x0, YARD_Y], [YARD_STEPS.x0, YARD_Y - YARD_STEPS.n * YARD_STEPS.run],
+  [YARD_STEPS.x1, YARD_Y - YARD_STEPS.n * YARD_STEPS.run], [YARD_STEPS.x1, YARD_Y],
 ];
 // Plot pozemku – odměřeno z leteckého snímku (žlutá čára), metry v souřadnicích půdorysu.
 const FENCE_BACK: Pt[] = [
@@ -419,7 +421,7 @@ export function buildSite(scene: THREE.Scene) {
   for (const [xa, xb] of [[BREAK_X, YARD_STEPS.x0], [YARD_STEPS.x1, 11.0]] as [number, number][]) {
     for (let x = xa; x < xb - 0.01; x += 1) {
       const x2 = Math.min(xb, x + 1);
-      box(x, YARD_Y - 0.2, x2, YARD_Y, G - 0.1, Math.max(hGarden(x, YARD_Y), hGarden(x2, YARD_Y)) + 0.1, wallMat);
+      box(x, YARD_Y - 0.2, x2, YARD_Y, G - 0.1, Math.max(hGarden(x, YARD_Y), hGarden(x2, YARD_Y)) + WALL_ABOVE, wallMat);
     }
   }
   {
@@ -429,8 +431,8 @@ export function buildSite(scene: THREE.Scene) {
       box(YARD_STEPS.x0, YARD_Y - YARD_STEPS.run * (i + 1), YARD_STEPS.x1, YARD_Y - YARD_STEPS.run * i, G - 0.05, G + rise * (i + 1), wallMat, false, true);
     }
     const yb = YARD_Y - YARD_STEPS.n * YARD_STEPS.run;
-    box(YARD_STEPS.x0 - 0.15, yb, YARD_STEPS.x0, YARD_Y, G - 0.05, top + 0.1, wallMat);
-    box(YARD_STEPS.x1, yb, YARD_STEPS.x1 + 0.15, YARD_Y, G - 0.05, top + 0.1, wallMat);
+    box(YARD_STEPS.x0 - 0.15, yb, YARD_STEPS.x0, YARD_Y, G - 0.05, top + WALL_ABOVE, wallMat);
+    box(YARD_STEPS.x1, yb, YARD_STEPS.x1 + 0.15, YARD_Y, G - 0.05, top + WALL_ABOVE, wallMat);
   }
   // dlážděná cestička a dvorek v úrovni ulice
   for (const [x0, y0, x1, y1] of PATHS) {
