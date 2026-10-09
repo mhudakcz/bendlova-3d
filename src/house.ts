@@ -105,9 +105,9 @@ const K = ROOF.ridgeY / (ROOF.hipApexX - 350); // valba hlavní střechy je strm
 // Vikýř pokoje v podkroví na nižší valbě (pohled přední, krov: okno 225/80)
 export const DORMER = {
   y0: 290, y1: 585, // včetně bočnic
-  depth: 273, // kde se pultová stříška potká s valbou
-  z0: 890, // výška stříšky nad líc fasády (cm vůči podlaze přízemí)
-  slope: 0.1,
+  depth: 205, // hloubka vikýře (výklenek pokoje podle krovu), stříška se zde potká s valbou
+  z0: 858, // výška stříšky nad líc fasády (cm vůči podlaze přízemí)
+  slope: 0.06,
 };
 export const dormerRoofZ = (x: number) => DORMER.z0 + DORMER.slope * x;
 const inDormer = (x: number, y: number) => x < DORMER.depth && y > DORMER.y0 && y < DORMER.y1;
@@ -309,7 +309,7 @@ const basementRooms: Room[] = [
 const BIG = 600;
 const atticWalls: Wall[] = [
   { r: [0, 0, 1100, 45], h: BIG },
-  { r: [0, 45, 45, 900], h: BIG, o: [win(325, 550, 175, 80)] }, // trojdílné okno ve vikýři
+  { r: [0, 45, 45, 900], h: BIG, o: [win(325, 550, 172, 76)] }, // trojdílné okno ve vikýři (225/80)
   // bočnice vikýře
   { r: [0, DORMER.y0, DORMER.depth, DORMER.y0 + 15], h: BIG },
   { r: [0, DORMER.y1 - 15, DORMER.depth, DORMER.y1], h: BIG },
@@ -318,28 +318,35 @@ const atticWalls: Wall[] = [
   { r: [395, 1355, STAIR_FRONT.x0, 1400], h: BIG },
   { r: [STAIR_FRONT.x0, SF_IN, 1100, STAIR_FRONT.y], h: BIG, o: stairWindowsFor(600, BIG) },
   { r: [1070, 45, 1100, SF_IN], h: BIG }, // štít
-  // pokoj
-  { r: [45, 265, 640, 280], h: 260 },
-  { r: [45, 800, 640, 815], h: 260 },
-  { r: [625, 45, 640, 815], h: 260, o: [door(640, 720)] },
-  // koupelna
-  { r: [800, 45, 815, 435], h: 260 },
-  { r: [640, 420, 815, 435], h: 260, o: [door(680, 760)] },
+  // pokoj (podle výkresu krovu): obdélník s výklenkem vikýře k zahradní fasádě, po stranách nadezdívky
+  { r: [185, 155, 515, 165], h: BIG }, // zadní stěna pokoje
+  { r: [185, 165, 195, DORMER.y0], h: BIG }, // nadezdívka vlevo od vikýře
+  { r: [195, DORMER.y1, 205, 710], h: BIG }, // nadezdívka vpravo od vikýře
+  { r: [205, 700, 515, 710], h: BIG }, // pokoj | půda
+  { r: [505, 165, 515, 840], h: BIG, o: [door(450, 530)] }, // pokoj | koupelna, předsíň
+  // koupelna (za pokojem)
+  { r: [515, 150, 780, 160], h: BIG },
+  { r: [770, 160, 780, 440], h: BIG },
+  { r: [515, 430, 780, 440], h: BIG, o: [door(560, 640)] },
   // předsíň
-  { r: [860, 435, 875, 770], h: 260, o: [door(480, 560)] },
-  { r: [640, 815, 830, 830], h: 260, o: [door(700, 780)] },
+  { r: [860, 435, 875, 770], h: BIG, o: [door(520, 600)] }, // na půdu vpravo
+  { r: [780, 435, 860, 445], h: BIG }, // předsíň | půda
+  { r: [515, 830, 830, 840], h: BIG, o: [door(700, 780)] }, // na přední půdu
   { r: [830, 830, 860, SF_IN], h: BIG }, // bok schodiště – od předsíně je průchod na podestu
   // zábradlí kolem otvoru schodiště
   { r: [975, 975, 1070, 983], h: 100, kind: 'railing', rail: 'bars' }, // zábradlí nad ramenem pod podestou podkroví
 ];
 const atticRooms: Room[] = [
-  { name: 'Pokoj', r: [45, 280, 625, 800], floor: 'wood' },
-  { name: 'Koupelna', r: [640, 45, 800, 420], floor: 'tile' },
-  { name: 'Předsíň', r: [640, 435, 860, 815], floor: 'wood' },
+  { name: 'Pokoj', r: [195, 165, 505, 700], floor: 'wood' },
+  { name: '', r: [45, DORMER.y0, 195, DORMER.y1], floor: 'wood' }, // výklenek vikýře
+  { name: 'Koupelna', r: [515, 160, 770, 430], floor: 'tile' },
+  { name: 'Předsíň', r: [515, 440, 860, 830], floor: 'wood' },
   { name: 'Půda', r: [875, 45, 1070, 770], floor: 'concrete' },
-  { name: 'Půda', r: [45, 45, 625, 265], floor: 'concrete' },
-  { name: 'Půda', r: [395, 830, 830, 1355], floor: 'concrete' },
-  { name: 'Půda', r: [45, 815, 395, 855], floor: 'concrete' },
+  { name: 'Půda', r: [45, 45, 870, 150], floor: 'concrete' },
+  { name: '', r: [45, 150, 185, DORMER.y0], floor: 'concrete' },
+  { name: '', r: [45, DORMER.y1, 195, 900], floor: 'concrete' },
+  { name: '', r: [205, 710, 505, 840], floor: 'concrete' },
+  { name: 'Půda', r: [395, 840, 830, 1355], floor: 'concrete' },
   { name: 'Schodiště', r: [860, 770, 1070, 975], floor: 'terrazzo' },
 ];
 

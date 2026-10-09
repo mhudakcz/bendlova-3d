@@ -779,7 +779,8 @@ export function buildHouse(scene: THREE.Scene) {
   db.add(-25, DORMER.y0 - 15, DORMER.depth + 15, DORMER.y1 + 15, DORMER.z0 - 14, DORMER.z0 + 40, (x) => dormerRoofZ(x) + 10);
   addMesh(roof, db.geometry(), track(new THREE.MeshStandardMaterial({ vertexColors: true, roughness: 0.85 })));
   const cb = new BoxBuilder(() => new THREE.Color('#d8c7a6'));
-  for (const [x0, y0, x1, y1] of [[560, 770, 650, 805], [920, 610, 1010, 665], [690, 440, 745, 480]]) {
+  // komíny v podkroví podle výkresu krovu (u stěn, ne uprostřed předsíně)
+  for (const [x0, y0, x1, y1] of [[515, 800, 595, 830], [880, 610, 970, 650], [780, 200, 815, 265]]) {
     const top = Math.max(roofHeight(x0, y0), roofHeight(x1, y0), roofHeight(x1, y1), roofHeight(x0, y1)) + 110;
     cb.add(x0, y0, x1, y1, 600, top);
   }
