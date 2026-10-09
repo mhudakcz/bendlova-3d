@@ -1,7 +1,7 @@
 import * as THREE from 'three';
 import { CSS2DObject } from 'three/examples/jsm/renderers/CSS2DRenderer.js';
 import {
-  BALCONY, FOOTPRINT, GARAGE, LEVELS, Level, ROOF, Room, STAIR, STAIR_HOLE, TERRAIN_Z, Wall, roofHeight,
+  BALCONY, FOOTPRINT, GARAGE, LEVELS, Level, ROOF, Room, STAIR, STAIR_HOLE, TERRAIN_Z, Wall, roofFaces, roofHeight,
 } from './house';
 import context from './context.json';
 
@@ -221,7 +221,7 @@ class BoxBuilder {
       // rozdělit po délce, aby oříznutí kopírovalo střechu
       const alongX = x1 - x0 >= y1 - y0;
       const L = alongX ? x1 - x0 : y1 - y0;
-      const n = Math.max(1, Math.ceil(L / 30));
+      const n = Math.max(1, Math.ceil(L / 10));
       if (n > 1) {
         for (let i = 0; i < n; i++) {
           const a = i / n, b = (i + 1) / n;
@@ -322,13 +322,20 @@ function buildWall(w: Wall, lv: Level, wb: BoxBuilder, rb: BoxBuilder, fb: BoxBu
     if (alongX) target.add(a, y0, b, y1, za, zb2, top);
     else target.add(x0, a, x1, b, za, zb2, top);
   };
-  const ops = [...(w.o ?? [])].sort((p, q) => p.a - q.a);
-  let cur = s0;
+  const ops = w.o ?? [];
+  // úseky zdi mezi hranami otvorů; otvory se mohou překrývat (např. dveře a okno nad nimi)
+  const cuts = [...new Set([s0, s1, ...ops.flatMap((o) => [o.a, o.b])])].sort((p, q) => p - q);
+  for (let i = 0; i < cuts.length - 1; i++) {
+    const a = cuts[i], b = cuts[i + 1];
+    const over = ops.filter((o) => o.a <= a && o.b >= b).sort((p, q) => p.sill - q.sill);
+    let z = 0;
+    for (const o of over) {
+      if (o.sill > z) piece(a, b, zb + z, zb + o.sill);
+      z = Math.max(z, o.sill + o.h);
+    }
+    if (z < H) piece(a, b, zb + z, zt);
+  }
   for (const o of ops) {
-    piece(cur, o.a, zb, zt);
-    if (o.sill > 0) piece(o.a, o.b, zb, zb + o.sill);
-    if (o.sill + o.h < H) piece(o.a, o.b, zb + o.sill + o.h, zt);
-    cur = o.b;
     if (o.kind === 'window') {
       // rám + sklo uprostřed tloušťky zdi
       const f = 5;
@@ -349,7 +356,6 @@ function buildWall(w: Wall, lv: Level, wb: BoxBuilder, rb: BoxBuilder, fb: BoxBu
       glass.add(pm);
     }
   }
-  piece(cur, s1, zb, zt);
 }
 
 function footprintShape(holes: number[][] = []) {
@@ -373,7 +379,8 @@ function buildStairs(z: number, sb: BoxBuilder, wb: BoxBuilder) {
     const t2 = z + 150 + rise * (i + 1);
     sb.add(x0, flight[1] - run * (i + 1), split, flight[1] - run * i, t2 - 30, t2); // rameno B (zpět)
   }
-  sb.add(x0, midLanding[0], x1, 1400, z + 130, z + 150); // mezipodesta (vč. prahu vstupních dveří)
+  // mezipodesta; u vstupu (suterén → přízemí) včetně prahu dveří v uliční zdi
+  sb.add(x0, midLanding[0], x1, z < -150 ? 1400 : midLanding[1], z + 130, z + 150);
   // středová zídka mezi rameny
   wb.add(split - 6, flight[0], split + 6, flight[1], z, z + 300);
 }
@@ -388,7 +395,7 @@ export function buildHouse(scene: THREE.Scene) {
     const g = new THREE.Group();
     g.name = lv.id;
     const isAttic = lv.id === 'A';
-    const top: TopFn = isAttic ? (x, y) => roofHeight(x, y) - 2 : null;
+    const top: TopFn = isAttic ? (x, y) => roofHeight(x, y) - 6 : null;
     const wb = new BoxBuilder(wallColor);
     const rb = new BoxBuilder();
     const fb = new BoxBuilder();
@@ -397,14 +404,21 @@ export function buildHouse(scene: THREE.Scene) {
     for (const w of lv.walls) buildWall(w, lv, wb, rb, fb, glass, top);
 
     // strop/podlahová deska
-    const hole = idx === 0 ? [] : [STAIR_HOLE];
-    const slabG = new THREE.ExtrudeGeometry(footprintShape(hole), { depth: 0.3, bevelEnabled: false });
+    // otvor schodiště ve stropech je protažený až k fasádě – vstupní dveře a okna schodiště přecházejí přes desku
+    let slabShape: THREE.Shape;
+    if (idx > 0) {
+      const [hx0, hy0, hx1] = STAIR_HOLE;
+      const pts: [number, number][] = [[0, 0], [1100, 0], [1100, 1400], [hx1, 1400], [hx1, hy0], [hx0, hy0], [hx0, 1400], [350, 1400], [350, 900], [0, 900]];
+      slabShape = new THREE.Shape(pts.map(([x, y]) => new THREE.Vector2(M(x), M(y))));
+    } else slabShape = footprintShape(idx === 0 ? [] : [STAIR_HOLE]);
+    const slabG = new THREE.ExtrudeGeometry(slabShape, { depth: 0.3, bevelEnabled: false });
     slabG.rotateX(Math.PI / 2);
     slabG.translate(0, M(lv.z), 0);
     const slab = addMesh(g, slabG, slabMat);
 
     // balkon ve výřezu
     const pb = new BoxBuilder(); // zpevněné plochy: balkon, garáž, sjezd
+    if (lv.id === 'P') pb.add(850, 1400, 1050, 1450, 95, 108); // stříška nad vstupem
     if (lv.id === 'P' || lv.id === '1P') pb.add(BALCONY[0], BALCONY[1], BALCONY[2], BALCONY[3], lv.z - 20, lv.z);
     // garáž: zvýšená podlaha + sjezd z ulice s opěrnými zídkami
     if (lv.id === 'S') {
@@ -463,20 +477,23 @@ export function buildHouse(scene: THREE.Scene) {
   // ---------------------------------------------------------- střecha
   const roof = new THREE.Group();
   roof.name = 'roof';
-  const o = ROOF.overhang;
-  const S = ROOF.rise / ROOF.ridgeY;
   const P = (x: number, y: number, z: number) => new THREE.Vector3(M(x), M(z), M(y));
-  const eo = ROOF.eave - o * S; // výška okraje přesahu
-  const R = ROOF.eave + ROOF.rise;
+  const faces = roofFaces();
   const tri: THREE.Vector3[] = [];
-  const quad = (a: THREE.Vector3, b: THREE.Vector3, c: THREE.Vector3, d: THREE.Vector3) => tri.push(a, b, c, a, c, d);
-  // zadní plocha
-  quad(P(-o, -o, eo), P(1100, -o, eo), P(1100, 700, R), P(700, 700, R));
-  // přední (uliční) plocha
-  quad(P(-o, 1400 + o, eo), P(700, 700, R), P(1100, 700, R), P(1100, 1400 + o, eo));
-  // valba k x=0
-  tri.push(P(-o, -o, eo), P(700, 700, R), P(-o, 1400 + o, eo));
-  for (let i = 0; i < tri.length; i += 3) [tri[i + 1], tri[i + 2]] = [tri[i + 2], tri[i + 1]]; // normály vzhůru
+  const triCm: [number, number, number][][] = []; // pro vrstevnice tašek
+  for (const f of faces) {
+    const contour = f.pts.map(([x, y]) => new THREE.Vector2(x, y));
+    const idx = THREE.ShapeUtils.triangulateShape(contour, []);
+    for (const [a, b, c] of idx) {
+      const t = [a, b, c].map((i) => [f.pts[i][0], f.pts[i][1], f.h(f.pts[i][0], f.pts[i][1])] as [number, number, number]);
+      // orientace: normála vzhůru
+      const [p0, p1, p2] = t;
+      const cross = (p1[0] - p0[0]) * (p2[1] - p0[1]) - (p1[1] - p0[1]) * (p2[0] - p0[0]);
+      const ord = cross > 0 ? [p0, p2, p1] : [p0, p1, p2];
+      triCm.push(ord);
+      for (const v of ord) tri.push(P(v[0], v[1], v[2]));
+    }
+  }
   const rg = new THREE.BufferGeometry().setFromPoints(tri);
   rg.computeVertexNormals();
   const roofMesh = new THREE.Mesh(rg, roofMat);
@@ -486,23 +503,41 @@ export function buildHouse(scene: THREE.Scene) {
   soffit.receiveShadow = true;
   soffit.raycast = () => {};
   roof.add(soffit);
-  // tašky – jemné linky
+  // řady tašek – vrstevnice po 30 cm výšky
   const lines: THREE.Vector3[] = [];
-  for (let k = 0; k < 14; k++) {
-    const h = eo + ((R - eo) * k) / 14;
-    const d = (h - ROOF.eave) / S; // vzdálenost od líce zdi (záporná = přesah)
-    lines.push(P(d, d, h + 1), P(1100, d, h + 1));
-    lines.push(P(d, 1400 - d, h + 1), P(1100, 1400 - d, h + 1));
-    lines.push(P(d, d, h + 1), P(d, 1400 - d, h + 1));
+  const R = ROOF.eave + ROOF.rise;
+  for (let h = ROOF.eave - 30; h < R; h += 22) {
+    for (const t of triCm) {
+      const pts: THREE.Vector3[] = [];
+      for (let i = 0; i < 3; i++) {
+        const a = t[i], b = t[(i + 1) % 3];
+        if ((a[2] - h) * (b[2] - h) < 0) {
+          const k = (h - a[2]) / (b[2] - a[2]);
+          pts.push(P(a[0] + (b[0] - a[0]) * k, a[1] + (b[1] - a[1]) * k, h + 1.5));
+        }
+      }
+      if (pts.length === 2) lines.push(pts[0], pts[1]);
+    }
   }
-  const ll = new THREE.LineSegments(
-    new THREE.BufferGeometry().setFromPoints(lines),
-    track(new THREE.LineBasicMaterial({ color: '#3f332e', transparent: true, opacity: 0.5 })),
-  );
-  roof.add(ll);
+  // hřebeny, nároží a úžlabí
+  const edges: THREE.Vector3[] = [];
+  for (const f of faces) {
+    for (let i = 0; i < f.pts.length; i++) {
+      const a = f.pts[i], b = f.pts[(i + 1) % f.pts.length];
+      const ha = f.h(a[0], a[1]), hb = f.h(b[0], b[1]);
+      if (ha > ROOF.eave - 10 || hb > ROOF.eave - 10) edges.push(P(a[0], a[1], ha + 2), P(b[0], b[1], hb + 2));
+    }
+  }
+  const lineMat = track(new THREE.LineBasicMaterial({ color: '#3f332e', transparent: true, opacity: 0.45 }));
+  roof.add(new THREE.LineSegments(new THREE.BufferGeometry().setFromPoints(lines), lineMat));
+  roof.add(new THREE.LineSegments(
+    new THREE.BufferGeometry().setFromPoints(edges),
+    track(new THREE.LineBasicMaterial({ color: '#2a201c' })),
+  ));
   const cb = new BoxBuilder(() => new THREE.Color('#d8c7a6'));
   for (const [x0, y0, x1, y1] of [[560, 770, 650, 805], [920, 610, 1010, 665], [690, 440, 745, 480]]) {
-    cb.add(x0, y0, x1, y1, 600, R + 90);
+    const top = Math.max(roofHeight(x0, y0), roofHeight(x1, y0), roofHeight(x1, y1), roofHeight(x0, y1)) + 110;
+    cb.add(x0, y0, x1, y1, 600, top);
   }
   addMesh(roof, cb.geometry(), chimneyMat).material = track(new THREE.MeshStandardMaterial({ vertexColors: true, roughness: 0.9 }));
   house.add(roof);

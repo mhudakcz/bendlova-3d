@@ -73,29 +73,72 @@ export const STAIR = {
 };
 export const STAIR_HOLE: [number, number, number, number] = [860, 870, 1070, 1355];
 
+// Střecha podle výkresu krovu: dvě valby vetknuté do sebe.
+//  - nižší valba nad zahradním křídlem (ložnice, x 0–350+, y 0–900), hřeben v y = 450
+//  - hlavní vyšší valba nad celou hloubkou domu, valba ke výřezu (x = 350), krátký hřeben
+//    v y = 700 u štítu se sousedem (x = 1100); obě střechy se potkávají v úžlabí.
 export const ROOF = {
   eave: 730, // výška okapu nad podlahou přízemí (cm)
-  rise: 480, // výška hřebene nad okapem
+  rise: 480, // hřeben hlavní střechy nad okapem
   ridgeY: 700,
+  wingRidgeY: 450,
+  hipApexX: 940, // začátek hlavního hřebene (z výkresu krovu)
   overhang: 50,
 };
-const SLOPE = ROOF.rise / ROOF.ridgeY;
+export const ROOF_SLOPE = ROOF.rise / ROOF.ridgeY;
+const S = ROOF_SLOPE;
+const K = ROOF.ridgeY / (ROOF.hipApexX - 350); // valba hlavní střechy je strmější
 
-/** Výška střešní plochy (cm, vůči podlaze přízemí) v bodě půdorysu – valba k x=0, štít na x=1100. */
+type RoofFace = { name: string; pts: [number, number][]; h: (x: number, y: number) => number };
+
+/** Roviny střechy (půdorysné polygony v cm, výška v cm nad podlahou přízemí). */
+export function roofFaces(): RoofFace[] {
+  const E = ROOF.eave, o = ROOF.overhang, oh = o / K;
+  const A: [number, number] = [ROOF.wingRidgeY, ROOF.wingRidgeY]; // vrchol valby křídla
+  const V: [number, number] = [350 + ROOF.wingRidgeY / K, ROOF.wingRidgeY]; // konec hřebene křídla / úžlabí
+  const Mx = ROOF.hipApexX, My = ROOF.ridgeY;
+  return [
+    { name: 'zadní', pts: [[-o, -o], [1100, -o], [1100, My], [Mx, My], V, A], h: (_x, y) => E + S * y },
+    { name: 'valba křídla', pts: [[-o, -o], A, [-o, 900 + o]], h: (x) => E + S * x },
+    { name: 'přední křídla', pts: [[-o, 900 + o], A, V, [350 - oh, 900 + o]], h: (_x, y) => E + S * (900 - y) },
+    { name: 'valba hlavní', pts: [[350 - oh, 900 + o], [350 - oh, 1400 + o], [Mx, My], V], h: (x) => E + K * S * (x - 350) },
+    { name: 'uliční', pts: [[350 - oh, 1400 + o], [1100, 1400 + o], [1100, My], [Mx, My]], h: (_x, y) => E + S * (1400 - y) },
+  ];
+}
+
+/** Výška střešní plochy (cm) v bodě půdorysu. */
 export function roofHeight(x: number, y: number): number {
-  const back = ROOF.eave + y * SLOPE;
-  const front = ROOF.eave + (1400 - y) * SLOPE;
-  const hip = ROOF.eave + x * SLOPE;
-  return Math.min(back, front, hip, ROOF.eave + ROOF.rise);
+  const E = ROOF.eave;
+  const back = E + S * y;
+  if (K * (x - 350) <= 900 - y) return Math.min(back, E + S * (900 - y), E + S * x); // křídlo
+  return Math.min(back, E + S * (1400 - y), E + K * S * (x - 350)); // hlavní střecha
 }
 
 const win = (a: number, b: number, sill = 90, h = 150): Opening => ({ a, b, sill, h, kind: 'window' });
 const door = (a: number, b: number, h = 200, sill = 0): Opening => ({ a, b, sill, h, kind: 'door' });
 
 // ---------- Obvodové zdi (společné pro suterén, přízemí a 1. patro) ----------
+// Okna podle pohledů (výkres „Pohled přední“ a „Pohled boční“): trojdílná okna 225 × 150 cm,
+// parapet v přízemí 80 cm, v 1. patře 115 cm; sklepní okna 225 × 65 cm.
+const SILL = { S: 155, P: 80, '1P': 115 } as const;
+// Okna schodiště v uliční fasádě leží nad mezipodestami, takže přecházejí přes stropní desku.
+// Zadávají se absolutně (cm vůči podlaze přízemí) a rozdělí se do zdí jednotlivých podlaží.
+const STAIR_WINDOWS: [number, number, number, number][] = [
+  [870, 1005, 255, 415], // nad mezipodestou přízemí → 1. patro
+  [870, 1005, 590, 675], // nad mezipodestou 1. patro → podkroví
+];
+export function stairWindowsFor(levelZ: number, height: number): Opening[] {
+  return STAIR_WINDOWS.flatMap(([a, b, z0, z1]) => {
+    const lo = Math.max(z0, levelZ), hi = Math.min(z1, levelZ + height);
+    return hi > lo ? [win(a, b, lo - levelZ, hi - lo)] : [];
+  });
+}
+
 function outerWalls(level: 'S' | 'P' | '1P'): Wall[] {
   const isS = level === 'S';
-  const sw = (a: number, b: number) => (isS ? win(a, b, 160, 50) : win(a, b));
+  const levelZ = { S: -300, P: 0, '1P': 300 }[level];
+  const sill = SILL[level];
+  const fw = (a: number, b: number) => win(a, b, sill, isS ? 65 : 150);
   const walls: Wall[] = [
     // zadní fasáda do zahrady
     {
@@ -105,22 +148,24 @@ function outerWalls(level: 'S' | 'P' | '1P'): Wall[] {
         : [win(625, 700, 120, 100), win(830, 980)],
     },
     // levá fasáda (pohled přední) – okna ložnic
-    { r: [0, 45, 45, 900], o: [sw(220, 370), sw(580, 730)] },
-    // stěna nad výřezem (balkonové dveře z ložnice)
+    { r: [0, 45, 45, 900], o: [fw(110, 335), fw(480, 705)] },
+    // stěna nad výřezem (dvoukřídlé balkonové dveře z ložnice)
     {
       r: [0, 855, 395, 900],
-      o: isS ? [] : [door(110, 260, 235)],
+      o: isS ? [] : [door(130, 280, 245)],
     },
-    // levá stěna obýváku do výřezu (dveře na balkon)
-    { r: [350, 900, 395, 1400], o: isS ? [] : [door(920, 1000, 235)] },
+    // levá stěna obýváku do výřezu (plná)
+    { r: [350, 900, 395, 1400] },
     // uliční fasáda
     {
       r: [395, 1355, 1100, 1400],
-      o: isS
-        ? [door(GARAGE.gate[0], GARAGE.gate[1], 300 - GARAGE.floor - 40, GARAGE.floor), door(880, 975, 150, 150)] // vrata garáže, vstupní dveře (spodní část)
-        : level === 'P'
-          ? [win(600, 750), door(880, 975, 85, 0)]
-          : [win(600, 750), win(900, 1030, 60, 200)],
+      o: [
+        ...(isS
+          ? [door(GARAGE.gate[0], GARAGE.gate[1], 300 - GARAGE.floor - 40, GARAGE.floor), door(880, 975, 150, 150)] // vrata garáže, vstupní dveře (spodní část)
+          : [fw(495, 720)]),
+        ...(level === 'P' ? [door(880, 975, 70, 0)] : []),
+        ...stairWindowsFor(levelZ, 300),
+      ],
     },
     // štítová zeď se sousedem (x = 1070–1100)
     { r: [1070, 45, 1100, 1355] },
@@ -204,7 +249,7 @@ const atticWalls: Wall[] = [
   { r: [0, 45, 45, 900], h: BIG, o: [win(420, 660, 25, 80)] }, // okno pokoje (vikýř)
   { r: [0, 855, 395, 900], h: BIG },
   { r: [350, 900, 395, 1400], h: BIG },
-  { r: [395, 1355, 1100, 1400], h: BIG },
+  { r: [395, 1355, 1100, 1400], h: BIG, o: stairWindowsFor(600, BIG) },
   { r: [1070, 45, 1100, 1355], h: BIG }, // štít
   // pokoj
   { r: [45, 265, 640, 280], h: 260 },
