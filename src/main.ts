@@ -6,6 +6,11 @@ import { buildSite } from './site';
 import { CURRENT_DRAWINGS } from './drawings';
 import { LEVELS, STREET_SPAWN, TERRAIN_Z } from './house';
 import './style.css';
+import { acceleratedRaycast, computeBoundsTree, disposeBoundsTree } from 'three-mesh-bvh';
+
+THREE.BufferGeometry.prototype.computeBoundsTree = computeBoundsTree;
+THREE.BufferGeometry.prototype.disposeBoundsTree = disposeBoundsTree;
+THREE.Mesh.prototype.raycast = acceleratedRaycast;
 
 const $ = <T extends HTMLElement = HTMLElement>(s: string) => document.querySelector(s) as T;
 
@@ -28,9 +33,9 @@ app.appendChild(labelRenderer.domElement);
 
 const scene = new THREE.Scene();
 scene.background = new THREE.Color('#cbdbe5');
-scene.fog = new THREE.Fog('#cbdbe5', 90, 260);
+scene.fog = new THREE.Fog('#cbdbe5', 160, 900);
 
-const camera = new THREE.PerspectiveCamera(50, innerWidth / innerHeight, 0.05, 800);
+const camera = new THREE.PerspectiveCamera(50, innerWidth / innerHeight, 0.05, 2500);
 camera.position.set(-14, 16, 24);
 
 scene.add(new THREE.HemisphereLight('#eef4ff', '#c9bca6', 1.3));
@@ -49,7 +54,7 @@ camera.add(lamp);
 scene.add(camera);
 
 const { levels, roof, doors: houseDoors } = buildHouse(scene);
-const { context, ground } = buildSurroundings(scene);
+const { context, ground, buildingColliders } = buildSurroundings(scene);
 const { colliders: siteColliders, walkables: siteWalkables, doors: siteDoors } = buildSite(scene);
 const doors = [...houseDoors, ...siteDoors];
 
@@ -73,10 +78,13 @@ orbit.target.set(5.5, 3, 7);
 orbit.enableDamping = true;
 orbit.maxPolarAngle = Math.PI * 0.495;
 orbit.minDistance = 3;
-orbit.maxDistance = 140;
+orbit.maxDistance = 900; // oddálení na celé okolí
+orbit.screenSpacePanning = false; // posun po zemi (pravé tlačítko / dva prsty)
+orbit.panSpeed = 1.2;
 const desiredTarget = orbit.target.clone();
 let desiredCam: THREE.Vector3 | null = null;
-orbit.addEventListener('start', () => (desiredCam = null));
+let flying = false; // kamera se plynule přesouvá (výběr podlaží) – jinak může uživatel volně posouvat
+orbit.addEventListener('start', () => { desiredCam = null; flying = false; });
 function flyToFloor() {
   const sel = levelIndex(state.floor);
   const y = sel >= 0 ? LEVELS[sel].z / 100 + 1 : 3;
@@ -84,6 +92,12 @@ function flyToFloor() {
   dir.y = Math.max(dir.y, sel >= 0 ? 0.75 : 0.45);
   dir.normalize();
   desiredCam = new THREE.Vector3(5.5, y, 7).addScaledVector(dir, sel >= 0 ? 20 : 30);
+  flying = true;
+}
+function flyOverview() {
+  desiredTarget.set(10, 0, 20);
+  desiredCam = new THREE.Vector3(-260, 330, 420);
+  flying = true;
 }
 
 function levelIndex(id: FloorId) {
@@ -162,6 +176,12 @@ bindRange('#cutHRange', 'cutHVal');
 bindRange('#cutXRange', 'cutXVal');
 bindRange('#cutZRange', 'cutZVal');
 $('#panelToggle').addEventListener('click', () => $('#panel').classList.toggle('hidden'));
+$('#overview').addEventListener('click', () => {
+  state.floor = 'all';
+  if (state.mode === 'walk') exitWalk();
+  applyView();
+  flyOverview();
+});
 
 // ------------------------------------------------------------------ výkresy
 const ORIGINAL = [
@@ -220,8 +240,13 @@ const feet = new THREE.Vector3();
 let vy = 0;
 const keys = new Set<string>();
 const ray = new THREE.Raycaster();
-const wallTargets = [...levels.flatMap((l) => [l.walls, l.rails, l.colliders]), ...siteColliders, ...doors.flatMap((d) => d.parts)];
+const wallTargets = [...levels.flatMap((l) => [l.walls, l.rails, l.colliders]), ...siteColliders, ...buildingColliders, ...doors.flatMap((d) => d.parts)];
 const floorTargets = [...levels.flatMap((l) => l.floors), ground, ...siteWalkables];
+// BVH pro rychlé kolize s velkými sloučenými meshi (okolí ~500 m)
+for (const o of [...wallTargets, ...floorTargets]) {
+  const m = o as THREE.Mesh;
+  if (m.isMesh && !(m as unknown as THREE.InstancedMesh).isInstancedMesh && m.geometry.attributes.position.count > 300) m.geometry.computeBoundsTree();
+}
 
 function spawnAt(where: string) {
   vy = 0;
@@ -451,7 +476,7 @@ function updateWalk(dt: number) {
   const l = Math.hypot(mx, mz);
   if (l > 0) {
     const analog = joyMag > 0 && !keys.size ? 0.4 + joyMag * 0.9 : 1;
-    const speed = (keys.has('ShiftLeft') || keys.has('ShiftRight') ? 3.4 : 1.6) * analog * dt;
+    const speed = (keys.has('ShiftLeft') || keys.has('ShiftRight') ? 5 : 1.6) * analog * dt;
     mx = (mx / l) * speed; mz = (mz / l) * speed;
     if (!blocked(mx, mz)) { feet.x += mx; feet.z += mz; }
     else {
@@ -533,10 +558,10 @@ function loop() {
     if (walking) updateWalk(dt);
   } else {
     const k = 1 - Math.pow(0.002, dt);
-    orbit.target.lerp(desiredTarget, k);
-    if (desiredCam) {
-      camera.position.lerp(desiredCam, k);
-      if (camera.position.distanceTo(desiredCam) < 0.02) desiredCam = null;
+    if (flying) {
+      orbit.target.lerp(desiredTarget, k);
+      if (desiredCam) camera.position.lerp(desiredCam, k);
+      if ((!desiredCam || camera.position.distanceTo(desiredCam) < 0.05) && orbit.target.distanceTo(desiredTarget) < 0.05) { desiredCam = null; flying = false; }
     }
     orbit.update();
   }

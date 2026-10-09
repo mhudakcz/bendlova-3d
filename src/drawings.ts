@@ -7,7 +7,7 @@ import {
   BEDS, BREAK_X, BUSHES, FENCE_HIGH, FENCE_LOW, FENCE_SIDE, FRONT_BEDS, GARAGE_GATE, HIGH, HOUSE_GATE, PATHS,
   STREET_FENCE, YARD_STEPS, YARD_Y,
 } from './site';
-import context from './context.json';
+import { OSM } from './osm';
 
 const INK = '#2b2620', WALL = '#e9a77f', PAPER = '#f6f1e6', SOFT = '#8a7f72', ACC = '#b4562e';
 const FONT = "font-family=\"IBM Plex Sans, Helvetica, Arial, sans-serif\"";
@@ -227,7 +227,7 @@ export function siteDrawing(): string {
   let b = '';
   // silnice a chodníky (z OSM)
   type R = { kind: string; pts: [number, number][] };
-  for (const r of (context as unknown as { roads: R[] }).roads) {
+  for (const r of OSM.roads as R[]) {
     if (r.kind !== 'residential' && r.kind !== 'service') continue;
     const d = r.pts.map(pt).join(' ');
     b += `<polyline points="${d}" fill="none" stroke="#cfcac2" stroke-width="${(5.5 + 3.8) * K}" stroke-linejoin="round"/>`;

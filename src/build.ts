@@ -3,7 +3,8 @@ import { CSS2DObject } from 'three/examples/jsm/renderers/CSS2DRenderer.js';
 import {
   BALCONY, BOILER, DOG_STEPS, FOOTPRINT, GARAGE, GARDEN_STEPS, SKLAD_PIT, LEVELS, Level, ROOF, Room, STAIR, STAIR_FRONT, STAIR_HOLE, TERRAIN_Z, Wall, roofFaces, roofHeight, DORMER, dormerRoofZ,
 } from './house';
-import context from './context.json';
+import { OSM } from './osm';
+import { mergeGeometries } from 'three/examples/jsm/utils/BufferGeometryUtils.js';
 import { Door, makeLeaf } from './doors';
 
 const M = (v: number) => v / 100; // cm -> m
@@ -845,18 +846,15 @@ export function buildHouse(scene: THREE.Scene) {
 }
 
 // ---------------------------------------------------------------- okolí (OpenStreetMap)
-type Ctx = {
-  buildings: { levels: number; roof: string; type: string; pts: [number, number][] }[];
-  roads: { kind: string; name: string; pts: [number, number][] }[];
-};
+
 
 export function buildSurroundings(scene: THREE.Scene) {
-  const ctx = context as unknown as Ctx;
+  const ctx = OSM;
   const group = new THREE.Group();
   group.name = 'context';
 
   // terén s otvorem pro dům
-  const size = 260;
+  const size = 750; // terén pro okolí ~500 m
   const ground = new THREE.Shape([
     new THREE.Vector2(-size, -size), new THREE.Vector2(size, -size),
     new THREE.Vector2(size, size), new THREE.Vector2(-size, size),
@@ -926,36 +924,157 @@ export function buildSurroundings(scene: THREE.Scene) {
     roofRow.castShadow = roofRow.receiveShadow = true;
     group.add(roofRow);
   }
-  for (const b of ctx.buildings) {
-    if (b.pts.length < 4) continue;
-    if (inRow(b.pts.slice(0, -1))) continue;
+  // ---- okolní budovy: stěny + střechy sloučené do pár meshů (barvy fasád ve vertex colors)
+  const wallGeos: THREE.BufferGeometry[] = [], roofGeos: THREE.BufferGeometry[] = [];
+  const facade = ['#e8dfcf', '#e3d3b4', '#d9c6a5', '#ece6da', '#e6cf9c', '#d8d2c6', '#efe1c4', '#cfc5b4', '#e9d7b8'];
+  const roofCols = ['#9b5a45', '#8a4f3d', '#a4644b', '#6e5a50', '#7d4636', '#8c8178'];
+  const colorize = (g: THREE.BufferGeometry, hex: string) => {
+    const c = new THREE.Color(hex), n = g.attributes.position.count, arr = new Float32Array(n * 3);
+    for (let i = 0; i < n; i++) { arr[i * 3] = c.r; arr[i * 3 + 1] = c.g; arr[i * 3 + 2] = c.b; }
+    g.setAttribute('color', new THREE.BufferAttribute(arr, 3));
+  };
+  const G0 = M(TERRAIN_Z);
+  ctx.buildings.forEach((b, bi) => {
+    if (b.pts.length < 4) return;
     const pts = b.pts.slice(0, -1);
+    if (inRow(pts)) return;
+    const small = ['garage', 'garages', 'shed', 'carport', 'roof', 'kiosk'].includes(b.type);
+    const h = small ? 2.6 : Math.max(1, b.levels) * 3.0 + 0.6;
     const shape = new THREE.Shape(pts.map(([x, y]) => new THREE.Vector2(x, y)));
-    const h = b.type === 'garage' ? 2.6 : Math.max(1, b.levels) * 3.1;
     const eg = new THREE.ExtrudeGeometry(shape, { depth: h, bevelEnabled: false });
     eg.rotateX(Math.PI / 2);
-    const mesh = new THREE.Mesh(eg, bMat);
-    mesh.position.y = M(TERRAIN_Z) + h;
-    mesh.castShadow = mesh.receiveShadow = true;
-    group.add(mesh);
-    // jednoduchá šikmá střecha – jehlan nad těžištěm
-    if (b.roof !== 'flat' && b.type !== 'garage') {
-      const cx = pts.reduce((s, p) => s + p[0], 0) / pts.length;
-      const cy = pts.reduce((s, p) => s + p[1], 0) / pts.length;
-      const tri: THREE.Vector3[] = [];
-      const top = new THREE.Vector3(cx, h + 3.2, cy);
+    eg.translate(0, G0 + h, 0);
+    eg.deleteAttribute('uv');
+    colorize(eg, facade[bi % facade.length]);
+    wallGeos.push(eg);
+    // šikmá střecha: u obdélníkových budov sedlo/valba podél delší strany, jinak jehlan
+    if (small || b.roof === 'flat' || (b.roof === '' && b.levels >= 5)) return;
+    const tri: THREE.Vector3[] = [];
+    const V = (x: number, y: number, z: number) => new THREE.Vector3(x, z, y);
+    const top = G0 + h;
+    if (pts.length === 4) {
+      const e = [0, 1, 2, 3].map((i) => Math.hypot(pts[(i + 1) % 4][0] - pts[i][0], pts[(i + 1) % 4][1] - pts[i][1]));
+      const k = e[0] + e[2] >= e[1] + e[3] ? 0 : 1; // delší strany k, k+2
+      const A = pts[k], B = pts[(k + 1) % 4], C = pts[(k + 2) % 4], D = pts[(k + 3) % 4];
+      const short = (e[(k + 1) % 4] + e[(k + 3) % 4]) / 2, rise = Math.min(4.2, short * 0.42);
+      const mid = (p: number[], q: number[]) => [(p[0] + q[0]) / 2, (p[1] + q[1]) / 2];
+      let r1 = mid(A, D), r2 = mid(B, C); // hřeben uprostřed mezi delšími stranami
+      if (b.roof === 'hipped' || b.roof === '') {
+        const len = Math.hypot(r2[0] - r1[0], r2[1] - r1[1]) || 1, inset = Math.min(short / 2, len / 2 - 0.1) / len;
+        const r1b = [r1[0] + (r2[0] - r1[0]) * inset, r1[1] + (r2[1] - r1[1]) * inset];
+        const r2b = [r2[0] + (r1[0] - r2[0]) * inset, r2[1] + (r1[1] - r2[1]) * inset];
+        r1 = r1b; r2 = r2b;
+      }
+      // čelní plochy (valba nebo štít)
+      tri.push(V(D[0], D[1], top), V(r1[0], r1[1], top + rise), V(A[0], A[1], top));
+      tri.push(V(B[0], B[1], top), V(r2[0], r2[1], top + rise), V(C[0], C[1], top));
+      // dlouhé plochy
+      tri.push(V(A[0], A[1], top), V(r1[0], r1[1], top + rise), V(r2[0], r2[1], top + rise), V(A[0], A[1], top), V(r2[0], r2[1], top + rise), V(B[0], B[1], top));
+      tri.push(V(C[0], C[1], top), V(r2[0], r2[1], top + rise), V(r1[0], r1[1], top + rise), V(C[0], C[1], top), V(r1[0], r1[1], top + rise), V(D[0], D[1], top));
+    } else {
+      const cx = pts.reduce((s2, p) => s2 + p[0], 0) / pts.length, cy = pts.reduce((s2, p) => s2 + p[1], 0) / pts.length;
+      const rad = Math.min(...pts.map((p) => Math.hypot(p[0] - cx, p[1] - cy)));
+      const apex = V(cx, cy, top + Math.min(3.5, rad * 0.7));
       for (let i = 0; i < pts.length; i++) {
         const a = pts[i], c = pts[(i + 1) % pts.length];
-        tri.push(new THREE.Vector3(a[0], h, a[1]), top, new THREE.Vector3(c[0], h, c[1]));
+        tri.push(V(a[0], a[1], top), apex, V(c[0], c[1], top));
       }
-      const rg = new THREE.BufferGeometry().setFromPoints(tri);
-      rg.computeVertexNormals();
-      const rm = new THREE.Mesh(rg, rMat);
-      rm.position.y = M(TERRAIN_Z);
-      rm.castShadow = true;
-      group.add(rm);
+    }
+    const rg = new THREE.BufferGeometry().setFromPoints(tri);
+    rg.computeVertexNormals();
+    colorize(rg, roofCols[bi % roofCols.length]);
+    roofGeos.push(rg);
+  });
+  const bWalls = new THREE.Mesh(mergeGeometries(wallGeos, false), new THREE.MeshStandardMaterial({ vertexColors: true, roughness: 0.95 }));
+  const bRoofs = new THREE.Mesh(mergeGeometries(roofGeos, false), new THREE.MeshStandardMaterial({ vertexColors: true, roughness: 0.9, side: THREE.DoubleSide }));
+  for (const m of [bWalls, bRoofs]) { m.castShadow = m.receiveShadow = true; group.add(m); }
+
+  // ---- plochy: trávníky, parky, lesíky, parkoviště, hřiště, bazény
+  const AREA: Record<string, string> = {
+    grass: '#86a862', park: '#82a85e', meadow: '#8fac68', grassland: '#8fac68', recreation_ground: '#86a862', greenfield: '#93ad6c',
+    village_green: '#86a862', dog_park: '#8aa865', playground: '#b9a77f', garden: '#7fa35b', wood: '#5f7f45', forest: '#5f7f45',
+    scrub: '#6d8a4f', parking: '#8b8986', garages: '#9a958e', pitch: '#5f9d5a', swimming_pool: '#5fa8d3', water: '#5fa8d3',
+    platform: '#b5b0a8', fitness_station: '#b9a77f',
+  };
+  const areaGeos: THREE.BufferGeometry[] = [];
+  const treeSpots: [number, number, number][] = OSM.trees.map(([x, y]) => [x, y, 1]);
+  let seed = 3;
+  const rnd = () => ((seed = (seed * 16807) % 2147483647) - 1) / 2147483646;
+  const insidePoly = (p: number[], poly: number[][]) => {
+    let c = false;
+    for (let i = 0, j = poly.length - 1; i < poly.length; j = i++) {
+      const [xi, yi] = poly[i], [xj, yj] = poly[j];
+      if (yi > p[1] !== yj > p[1] && p[0] < ((xj - xi) * (p[1] - yi)) / (yj - yi) + xi) c = !c;
+    }
+    return c;
+  };
+  for (const a of OSM.areas) {
+    const col = AREA[a.kind];
+    if (!col || a.pts.length < 4) continue;
+    if (Math.hypot(a.pts[0][0] - a.pts.at(-1)![0], a.pts[0][1] - a.pts.at(-1)![1]) > 0.5) continue;
+    const pts = a.pts.slice(0, -1);
+    const g = new THREE.ShapeGeometry(new THREE.Shape(pts.map(([x, y]) => new THREE.Vector2(x, y))));
+    g.rotateX(Math.PI / 2);
+    const hl = ['swimming_pool', 'water'].includes(a.kind) ? 0.012 : ['parking', 'platform', 'pitch'].includes(a.kind) ? 0.009 : 0.006;
+    g.translate(0, G0 + hl, 0);
+    g.deleteAttribute('uv');
+    colorize(g, col);
+    areaGeos.push(g);
+    // stromy v lesíkách a parcích
+    const dens = ['wood', 'forest'].includes(a.kind) ? 1 / 45 : ['park', 'scrub'].includes(a.kind) ? 1 / 160 : ['grass', 'garden', 'recreation_ground'].includes(a.kind) ? 1 / 420 : 0;
+    if (!dens) continue;
+    const xs = pts.map((p) => p[0]), ys = pts.map((p) => p[1]);
+    const x0 = Math.min(...xs), x1 = Math.max(...xs), y0 = Math.min(...ys), y1 = Math.max(...ys);
+    const n = Math.min(400, Math.round((x1 - x0) * (y1 - y0) * dens));
+    for (let i = 0; i < n; i++) {
+      const p = [x0 + rnd() * (x1 - x0), y0 + rnd() * (y1 - y0)];
+      if (insidePoly(p, pts) && Math.hypot(p[0] - 5.5, p[1] - 7) > 30) treeSpots.push([p[0], p[1], 0.7 + rnd() * 0.6]);
     }
   }
+  if (areaGeos.length) {
+    const am = new THREE.Mesh(mergeGeometries(areaGeos, false), new THREE.MeshStandardMaterial({
+      vertexColors: true, roughness: 1, side: THREE.DoubleSide, polygonOffset: true, polygonOffsetFactor: -1, polygonOffsetUnits: -1,
+    }));
+    am.receiveShadow = true;
+    group.add(am);
+  }
+  // ---- stromy (instancované – stovky stromů za cenu dvou draw callů)
+  if (treeSpots.length) {
+    const trunk = new THREE.InstancedMesh(new THREE.CylinderGeometry(0.15, 0.22, 1, 6), new THREE.MeshStandardMaterial({ color: '#6b5440', roughness: 1 }), treeSpots.length);
+    const crown = new THREE.InstancedMesh(new THREE.IcosahedronGeometry(1, 1), new THREE.MeshStandardMaterial({ color: '#ffffff', roughness: 0.95, flatShading: true }), treeSpots.length);
+    const mtx = new THREE.Matrix4(), q = new THREE.Quaternion(), col = new THREE.Color();
+    treeSpots.forEach(([x, y, sc], i) => {
+      const h = (6 + rnd() * 6) * sc;
+      mtx.compose(new THREE.Vector3(x, G0 + h * 0.25, y), q, new THREE.Vector3(1, h * 0.5, 1));
+      trunk.setMatrixAt(i, mtx);
+      const r = (2 + rnd() * 1.6) * sc;
+      mtx.compose(new THREE.Vector3(x, G0 + h * 0.62, y), q, new THREE.Vector3(r, r * 0.85, r));
+      crown.setMatrixAt(i, mtx);
+      crown.setColorAt(i, col.setHSL(0.24 + rnd() * 0.06, 0.32 + rnd() * 0.12, 0.3 + rnd() * 0.1));
+    });
+    for (const m of [trunk, crown]) { m.castShadow = true; m.receiveShadow = true; group.add(m); }
+  }
+  // ---- tramvajové a železniční koleje
+  {
+    const railGeos: THREE.BufferGeometry[] = [];
+    for (const r of OSM.rails) {
+      for (const off of [-0.72, 0.72]) {
+        const pos: number[] = [];
+        for (let i = 0; i < r.pts.length - 1; i++) {
+          const [ax, ay] = r.pts[i], [bx, by] = r.pts[i + 1];
+          const dx = bx - ax, dy = by - ay, L = Math.hypot(dx, dy) || 1, nx = -dy / L, ny = dx / L;
+          const a1 = [ax + nx * (off - 0.04), ay + ny * (off - 0.04)], a2 = [ax + nx * (off + 0.04), ay + ny * (off + 0.04)];
+          const b1 = [bx + nx * (off - 0.04), by + ny * (off - 0.04)], b2 = [bx + nx * (off + 0.04), by + ny * (off + 0.04)];
+          for (const p of [a1, b1, b2, a1, b2, a2]) pos.push(p[0], G0 + 0.06, p[1]);
+        }
+        const g = new THREE.BufferGeometry();
+        g.setAttribute('position', new THREE.Float32BufferAttribute(pos, 3));
+        g.computeVertexNormals();
+        railGeos.push(g);
+      }
+    }
+    if (railGeos.length) group.add(new THREE.Mesh(mergeGeometries(railGeos, false), new THREE.MeshStandardMaterial({ color: '#8d9196', metalness: 0.7, roughness: 0.35, side: THREE.DoubleSide })));
+  }
   scene.add(group);
-  return { context: group, ground: groundMesh };
+  return { context: group, ground: groundMesh, buildingColliders: [bWalls] };
 }
