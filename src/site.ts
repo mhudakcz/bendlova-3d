@@ -9,18 +9,25 @@ type Ctx = { roads: { kind: string; name: string; pts: Pt[] }[] };
 
 const G = TERRAIN_Z / 100; // výška terénu (m)
 
+const FX = 1.0; // úsek plotu kolmo k ulici vedle schodů (předzahrádka s keři)
 // Plot pozemku – odměřeno z leteckého snímku (žlutá čára), metry v souřadnicích půdorysu.
 const FENCE_BACK: Pt[] = [
-  [11.0, 0.0], [11.47, -1.43], [10.09, -25.38], [-30.81, -17.62], [-30.16, 6.44],
-  [-2.77, 7.19], [-1.3, 11.65], [2.46, 11.65], [2.46, 18.6], // u balkonů pravý úhel
+  [11.0, 0.0], [11.0, -1.43], [10.09, -25.38], [-30.81, -17.62], [-30.16, 6.44],
+  [-2.77, 7.19], [-1.3, 11.65], [FX, 11.65], [FX, 18.6], // u balkonů pravý úhel
 ];
-const STREET_FENCE: [Pt, Pt] = [[2.46, 18.75], [12.27, 18.85]];
-const FENCE_SIDE: Pt[] = [[12.27, 18.85], [12.08, 15.4], [11.0, 15.3]];
+const PARTY_X = 11.0; // hranice se sousedem vpravo = štítová zeď domu
+const STREET_FENCE: [Pt, Pt] = [[FX, 18.75], [PARTY_X, 18.85]];
+// keře v předzahrádce vedle schodů (x, y, poloměr)
+const BUSHES: [number, number, number][] = [
+  [1.6, 12.6, 0.6], [2.4, 12.4, 0.5], [1.5, 14.2, 0.7], [2.3, 16.2, 0.55], [1.6, 17.6, 0.65],
+  [3.0, 17.9, 0.45], [2.9, 13.3, 0.4],
+];
+const FENCE_SIDE: Pt[] = [[PARTY_X, 18.85], [PARTY_X, 15.3]];
 const GARAGE_GATE: [number, number] = [4.45, 7.95]; // x na uličním plotu
 const HOUSE_GATE: [number, number] = [8.75, 9.8];
 // zahrada za domem (trávník)
 const GARDEN: Pt[] = [
-  [11.0, 0.0], [11.47, -1.43], [10.09, -25.38], [-30.81, -17.62], [-30.16, 6.44],
+  [11.0, 0.0], [11.0, -1.43], [10.09, -25.38], [-30.81, -17.62], [-30.16, 6.44],
   [-2.77, 7.19], [-1.3, 11.65], [0, 11.65], [0, 0],
 ];
 
@@ -219,6 +226,27 @@ export function buildSite(scene: THREE.Scene) {
   // ---------------------------------------------------------- ulice: asfalt, obrubníky, chodníky
   const ROAD_W = 5.5, CURB = 0.12, WALK_W = 1.9;
   const roads = ctx.roads.filter((r) => r.kind === 'residential' || r.kind === 'service');
+  // park = vnitřek smyčky ulice před domem (nejbližší silnice k uličnímu plotu)
+  const loop = [...roads].sort((p, q) =>
+    Math.min(...p.pts.map((t) => Math.hypot(t[0] - 7, t[1] - 22))) - Math.min(...q.pts.map((t) => Math.hypot(t[0] - 7, t[1] - 22))))[0];
+  const lx = loop.pts.map((p) => p[0]), ly = loop.pts.map((p) => p[1]);
+  const park = { x0: Math.min(...lx), x1: Math.max(...lx), y0: Math.min(...ly), y1: Math.max(...ly) };
+  const inPark = (p: Pt) => p[0] > park.x0 + 0.5 && p[0] < park.x1 - 0.5 && p[1] > park.y0 + 0.5 && p[1] < park.y1 - 0.5;
+  // úseky lomené čáry, které leží na straně parku / na straně domů
+  const runs = (pts: Pt[], side: number) => {
+    const out: { park: boolean; pts: Pt[] }[] = [];
+    for (let i = 0; i < pts.length - 1; i++) {
+      const [ax, ay] = pts[i], [bx, by] = pts[i + 1];
+      const dx = bx - ax, dy = by - ay, l = Math.hypot(dx, dy) || 1;
+      const probe: Pt = [(ax + bx) / 2 - (dy / l) * side * 4, (ay + by) / 2 + (dx / l) * side * 4];
+      const isPark = inPark(probe);
+      const last = out.at(-1);
+      if (last && last.park === isPark) last.pts.push(pts[i + 1]);
+      else out.push({ park: isPark, pts: [pts[i], pts[i + 1]] });
+    }
+    return out;
+  };
+  const hedgeMat = new THREE.MeshStandardMaterial({ color: '#5d7f43', roughness: 1, side: THREE.DoubleSide });
   for (const r of roads) {
     const closed = Math.hypot(r.pts[0][0] - r.pts.at(-1)![0], r.pts[0][1] - r.pts.at(-1)![1]) < 0.5;
     const ar = asphaltTex.userData.repeat as number, pr = paverTex.userData.repeat as number;
@@ -227,15 +255,27 @@ export function buildSite(scene: THREE.Scene) {
     group.add(asphalt);
     walkables.push(asphalt);
     for (const side of [-1, 1]) {
-      const o0 = (side * ROAD_W) / 2, o1 = side * (ROAD_W / 2 + WALK_W);
-      const [lo, hi] = side < 0 ? [o1, o0] : [o0, o1];
-      const walk = new THREE.Mesh(strip(r.pts, lo, hi, G + CURB, closed, pr, CURB), paverMat);
-      walk.receiveShadow = true;
-      group.add(walk);
-      walkables.push(walk);
-      const curb = new THREE.Mesh(strip(r.pts, o0 - side * 0.0, o0 + side * 0.15, G + CURB + 0.005, closed, 1), curbMat);
+      const o0 = (side * ROAD_W) / 2;
+      const curb = new THREE.Mesh(strip(r.pts, Math.min(o0, o0 + side * 0.15), Math.max(o0, o0 + side * 0.15), G + CURB + 0.005, closed, 1, CURB), curbMat);
       curb.receiveShadow = true;
       group.add(curb);
+      for (const run of runs(r.pts, side)) {
+        if (run.park) {
+          // park lemují nízké keře
+          const h0 = side * (ROAD_W / 2 + 0.5), h1 = side * (ROAD_W / 2 + 1.2);
+          const hedge = new THREE.Mesh(strip(run.pts, Math.min(h0, h1), Math.max(h0, h1), G + 0.65, false, 1, 0.65), hedgeMat);
+          hedge.castShadow = hedge.receiveShadow = true;
+          group.add(hedge);
+          colliders.push(hedge);
+        } else {
+          // chodník na straně domů
+          const o1 = side * (ROAD_W / 2 + WALK_W);
+          const walk = new THREE.Mesh(strip(run.pts, Math.min(o0, o1), Math.max(o0, o1), G + CURB, false, pr, CURB), paverMat);
+          walk.receiveShadow = true;
+          group.add(walk);
+          walkables.push(walk);
+        }
+      }
     }
   }
   // samostatné pěšiny daleko od silnic (cesty v parku apod.)
@@ -263,22 +303,26 @@ export function buildSite(scene: THREE.Scene) {
   }
 
   // ---------------------------------------------------------- park uprostřed smyčky ulice
-  // úsek ulice, který obtáčí park před domem (nejbližší silnice k uličnímu plotu)
-  const loop = [...roads].sort((p, q) =>
-    Math.min(...p.pts.map((t) => Math.hypot(t[0] - 7, t[1] - 22))) - Math.min(...q.pts.map((t) => Math.hypot(t[0] - 7, t[1] - 22))))[0];
   const parkRand = rng(7);
-  if (loop) {
-    const xs = loop.pts.map((p) => p[0]), ys = loop.pts.map((p) => p[1]);
-    const inset = ROAD_W / 2 + WALK_W + 0.2;
-    const px0 = Math.min(...xs) + inset, px1 = Math.max(...xs) - inset;
-    const py0 = Math.min(...ys) + inset, py1 = Math.max(...ys) - inset;
+  {
+    const inset = ROAD_W / 2 + 0.2;
+    const px0 = park.x0 + inset, px1 = park.x1 - inset, py0 = park.y0 + inset, py1 = park.y1 - inset;
     if (px1 > px0 && py1 > py0) {
       group.add(flat(polyShape([[px0, py0], [px1, py0], [px1, py1], [px0, py1]]), G + 0.05, lawnMat, lawnTex.userData.repeat as number));
       for (let i = 0; i < 10; i++) {
-        const x = px0 + 1.5 + parkRand() * (px1 - px0 - 3), y = py0 + 1.5 + parkRand() * (py1 - py0 - 3);
+        const x = px0 + 3 + parkRand() * (px1 - px0 - 6), y = py0 + 3 + parkRand() * (py1 - py0 - 6);
         group.add(tree(x, y, 7 + parkRand() * 5, 2.2 + parkRand() * 1.5, i));
       }
     }
+  }
+
+  // ---------------------------------------------------------- keře
+  for (const [x, y, r] of BUSHES) {
+    const b = new THREE.Mesh(new THREE.IcosahedronGeometry(r, 1), leafMats[(x * 10) % leafMats.length | 0]);
+    b.position.set(x, G + r * 0.7, y);
+    b.scale.y = 0.8;
+    b.castShadow = b.receiveShadow = true;
+    group.add(b);
   }
 
   // ---------------------------------------------------------- zahrada a plot
