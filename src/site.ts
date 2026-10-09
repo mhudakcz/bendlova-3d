@@ -13,10 +13,12 @@ const FX = 1.0; // úsek plotu kolmo k ulici vedle schodů (předzahrádka s ke�
 // Plot pozemku – odměřeno z leteckého snímku (žlutá čára), metry v souřadnicích půdorysu.
 const FENCE_BACK: Pt[] = [
   [11.0, 0.0], [11.0, -1.43], [10.09, -25.38], [-30.81, -17.62], [-30.16, 6.44],
-  [-2.77, 7.19], [-1.3, 11.65], [FX, 11.65], [FX, 18.6], // u balkonů pravý úhel
+  [-2.77, 7.19], [-2.77, 11.65], [FX, 11.65], [FX, 18.6], // u balkonů pravý úhel
 ];
 const PARTY_X = 11.0; // hranice se sousedem vpravo = štítová zeď domu
 const STREET_FENCE: [Pt, Pt] = [[FX, 18.75], [PARTY_X, 18.85]];
+// záhony za domem u pravého plotu (z leteckého snímku): pásy podél zahrady
+const BEDS = { x0: 1.6, y0: -20.0, y1: -14.2, n: 5, w: 0.7, gap: 0.35 };
 // keře v předzahrádce vedle schodů (x, y, poloměr)
 const BUSHES: [number, number, number][] = [
   [1.6, 12.6, 0.6], [2.4, 12.4, 0.5], [1.5, 14.2, 0.7], [2.3, 16.2, 0.55], [1.6, 17.6, 0.65],
@@ -28,7 +30,7 @@ const HOUSE_GATE: [number, number] = [8.75, 9.8];
 // zahrada za domem (trávník)
 const GARDEN: Pt[] = [
   [11.0, 0.0], [11.0, -1.43], [10.09, -25.38], [-30.81, -17.62], [-30.16, 6.44],
-  [-2.77, 7.19], [-1.3, 11.65], [0, 11.65], [0, 0],
+  [-2.77, 7.19], [-2.77, 11.65], [0, 11.65], [0, 0],
 ];
 
 function canvasTex(size: number, draw: (g: CanvasRenderingContext2D, s: number) => void, repeatMeters: number) {
@@ -263,7 +265,7 @@ export function buildSite(scene: THREE.Scene) {
         if (run.park) {
           // park lemuje živý plot z keřů vysoký ~2 m
           const HEDGE_H = 2.0;
-          const h0 = side * (ROAD_W / 2 + 0.5), h1 = side * (ROAD_W / 2 + 1.7);
+          const h0 = side * (ROAD_W / 2 + 0.5), h1 = side * (ROAD_W / 2 + 2.0); // pás keřů 1,5 m
           const hedge = new THREE.Mesh(strip(run.pts, Math.min(h0, h1), Math.max(h0, h1), G + HEDGE_H, false, 1, HEDGE_H), hedgeMat);
           hedge.castShadow = hedge.receiveShadow = true;
           group.add(hedge);
@@ -317,6 +319,22 @@ export function buildSite(scene: THREE.Scene) {
     }
   }
 
+  // ---------------------------------------------------------- záhony
+  const soilTex = canvasTex(128, (g, s) => {
+    g.fillStyle = '#5e4632'; g.fillRect(0, 0, s, s);
+    speckle(g, s, 2500, ['#6b5039', '#53402d', '#705842'], 2);
+    g.fillStyle = 'rgba(110,150,80,.55)';
+    for (let i = 0; i < 40; i++) g.fillRect(Math.random() * s, Math.random() * s, 3, 3); // výsadba
+  }, 1);
+  // záhony jsou v úrovni terénu – jen pásy hlíny v trávníku
+  const soilMat = new THREE.MeshStandardMaterial({
+    map: soilTex, roughness: 1, side: THREE.DoubleSide, polygonOffset: true, polygonOffsetFactor: -2, polygonOffsetUnits: -2,
+  });
+  for (let i = 0; i < BEDS.n; i++) {
+    const x0 = BEDS.x0 + i * (BEDS.w + BEDS.gap);
+    group.add(flat(polyShape([[x0, BEDS.y0], [x0 + BEDS.w, BEDS.y0], [x0 + BEDS.w, BEDS.y1], [x0, BEDS.y1]]), G + 0.025, soilMat, 1));
+  }
+
   // ---------------------------------------------------------- keře
   for (const [x, y, r] of BUSHES) {
     const b = new THREE.Mesh(new THREE.IcosahedronGeometry(r, 1), leafMats[(x * 10) % leafMats.length | 0]);
@@ -333,6 +351,7 @@ export function buildSite(scene: THREE.Scene) {
   for (let i = 0; i < 200 && placed < 14; i++) {
     const x = -30 + gRand() * 41, y = -25 + gRand() * 32;
     if (!inside([x, y], GARDEN) || (x > -3 && y > -3)) continue; // ne těsně u domu
+    if (x > BEDS.x0 - 2 && x < BEDS.x0 + BEDS.n * (BEDS.w + BEDS.gap) + 2 && y > BEDS.y0 - 2 && y < BEDS.y1 + 2) continue; // ne v záhonech
     group.add(tree(x, y, 6 + gRand() * 6, 1.8 + gRand() * 1.6, placed, gRand() < 0.25));
     placed++;
   }
