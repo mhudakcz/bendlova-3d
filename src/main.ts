@@ -39,7 +39,8 @@ scene.fog = new THREE.Fog('#cbdbe5', 250, 1900);
 const camera = new THREE.PerspectiveCamera(50, innerWidth / innerHeight, 0.05, 2500);
 camera.position.set(-14, 16, 24);
 
-scene.add(new THREE.HemisphereLight('#eef4ff', '#c9bca6', 1.3));
+const hemi = new THREE.HemisphereLight('#eef4ff', '#c9bca6', 1.3);
+scene.add(hemi);
 const sun = new THREE.DirectionalLight('#fff0d8', 2.6);
 sun.position.set(-18, 30, 22);
 sun.target.position.set(5.5, 0, 7);
@@ -286,6 +287,7 @@ function exitWalk() {
   if (document.pointerLockElement) document.exitPointerLock();
   orbit.enabled = true;
   lamp.visible = false;
+  resetLight();
   camera.fov = 50;
   camera.updateProjectionMatrix();
   camera.position.set(-14, 16, 24);
@@ -513,6 +515,25 @@ function currentLevel() {
   LEVELS.forEach((l, i) => { if (feet.y >= l.z / 100 - 0.4) idx = i; });
   return LEVELS[idx];
 }
+// světlo podle polohy při procházení: venku plné, v domě tlumené, v suterénu (pod terénem) tma
+let lightLevel = 1;
+function adaptLight(dt: number) {
+  const inFootprint = feet.x > 0 && feet.x < 11 && feet.z > 0 && feet.z < 15.3 && !(feet.x < 3.5 && feet.z > 9);
+  const target = !inFootprint ? 1 : feet.y < -1.7 ? 0.17 : feet.y > 5.5 ? 0.62 : 0.72;
+  lightLevel += (target - lightLevel) * Math.min(1, dt * 2.2); // oči si zvykají
+  hemi.intensity = 1.3 * lightLevel;
+  renderer.toneMappingExposure = 1.05 * (0.55 + 0.45 * lightLevel);
+  const cellar = 1 - Math.min(1, Math.max(0, (lightLevel - 0.17) / 0.5)); // 1 = suterén
+  lamp.intensity = 9 - 6.2 * cellar; // ve sklepě slabé světlo
+  lamp.distance = 14 - 6 * cellar;
+  lamp.color.setHSL(0.09, 0.55 + 0.25 * cellar, 0.85 - 0.1 * cellar); // teplejší, slabší světlo ve sklepě
+}
+function resetLight() {
+  lightLevel = 1;
+  hemi.intensity = 1.3;
+  renderer.toneMappingExposure = 1.05;
+}
+
 function drawMinimap() {
   const lv = currentLevel();
   const outside = feet.x < 0 || feet.x > 11 || feet.z < 0 || feet.z > 15.3 || (feet.x < 3.5 && feet.z > 9);
@@ -557,6 +578,7 @@ function loop() {
   const dt = Math.min(clock.getDelta(), 0.05);
   if (state.mode === 'walk') {
     if (walking) updateWalk(dt);
+    adaptLight(dt);
   } else {
     const k = 1 - Math.pow(0.002, dt);
     if (flying) {
@@ -585,4 +607,4 @@ addEventListener('resize', () => {
 applyView();
 loop();
 // pro ladění
-Object.assign(window as object, { __app: { scene, camera, state, levels, enterWalk, exitWalk, spawnAt, feet, keys, updateWalk, doors, joy } });
+Object.assign(window as object, { __light: () => ({ lightLevel, hemi: hemi.intensity, lamp: lamp.intensity }), __app: { scene, camera, state, levels, enterWalk, exitWalk, spawnAt, feet, keys, updateWalk, doors, joy } });
