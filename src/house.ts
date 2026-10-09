@@ -262,23 +262,30 @@ function flatRooms(level: 'P' | '1P'): Room[] {
 // Velký sklad v suterénu je zapuštěný o 50 cm níž, z chodby do něj vedou schody dolů.
 export const SKLAD_PIT = {
   dz: -50,
-  outline: [[45, 45], [565, 45], [565, 760], [395, 760], [395, 855], [45, 855]] as [number, number][],
-  steps: { x1: 565, y0: 600, y1: 680, n: 3, run: 30 }, // u dveří z chodby, sestupují směrem k x = 0
+  // jáma skladu včetně prahu dveří a schodů v chodbě
+  outline: [[45, 45], [565, 45], [565, 600], [700, 600], [700, 680], [565, 680], [565, 760], [395, 760], [395, 855], [45, 855]] as [number, number][],
+  door: [600, 680] as [number, number], // dveře ze chodby (ve zdi x 565–610)
+  steps: { x0: 610, y0: 600, y1: 680, n: 3, run: 30 }, // schody v chodbě, sestupují ke dveřím
+  divider: { y0: 535, y1: 550, door: [450, 530] as [number, number] }, // příčka dělící sklad na dvě části (podle náčrtu)
 };
 
 const basementWalls: Wall[] = [
   ...outerWalls('S'),
   ...stairHallWalls(),
-  { r: [565, 45, 610, 760], o: [door(600, 680)] }, // nosná zeď sklad | chodba
+  { r: [565, 45, 610, 760], o: [door(600, 680, 150)] }, // nosná zeď sklad | chodba (dveře sahají pod podlahu – jáma)
+  { r: [45, SKLAD_PIT.divider.y0, 565, SKLAD_PIT.divider.y1], o: [door(SKLAD_PIT.divider.door[0], SKLAD_PIT.divider.door[1], 150)] }, // příčka ve skladu
   { r: [785, 45, 800, 300] }, // sklad | prádelna
   { r: [610, 300, 1070, 315], o: [door(650, 730), door(880, 960)] },
   { r: [395, 760, 830, 805], o: [door(700, 780)] }, // chodba | sklep
 ];
 const basementRooms: Room[] = [
-  { name: 'Sklad', r: [45, 45, 565, 855], floor: 'concrete', dz: SKLAD_PIT.dz },
+  { name: 'Sklad', r: [45, 45, 565, SKLAD_PIT.divider.y0], floor: 'concrete', dz: SKLAD_PIT.dz },
+  { name: 'Sklad', r: [45, SKLAD_PIT.divider.y1, 565, 855], floor: 'concrete', dz: SKLAD_PIT.dz },
   { name: 'Sklad', r: [610, 45, 785, 300], floor: 'concrete' },
   { name: 'Prádelna', r: [800, 45, 1070, 300], floor: 'tile' },
-  { name: 'Chodba', r: [610, 315, 1070, 760], floor: 'concrete' },
+  { name: 'Chodba', r: [610, 315, 1070, 600], floor: 'concrete' },
+  { name: '', r: [700, 600, 1070, 680], floor: 'concrete' },
+  { name: '', r: [610, 680, 1070, 760], floor: 'concrete' },
   { name: 'Garáž', r: GARAGE.room, floor: 'concrete', dz: GARAGE.floor },
   { name: 'Schodiště', r: [860, 770, 1070, 870], floor: 'terrazzo' },
 ];

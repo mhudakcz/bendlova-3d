@@ -447,17 +447,26 @@ export function buildHouse(scene: THREE.Scene) {
     if (lv.id === 'P' || lv.id === '1P') pb.add(BALCONY[0], BALCONY[1], BALCONY[2], BALCONY[3], lv.z - 20, lv.z);
     // garáž: zvýšená podlaha + sjezd z ulice s opěrnými zídkami
     if (lv.id === 'S') {
-      // zapuštěný sklad: podlaha o 50 cm níž, zdi protažené dolů, schody od dveří z chodby
+      // zapuštěný sklad: podlaha o 50 cm níž, zdi protažené dolů (s otvory dveří), schody v chodbě
       const pz = lv.z + SKLAD_PIT.dz;
-      for (const [a, b, c, d] of [[0, 0, 45, 900], [0, 0, 610, 45], [565, 45, 610, 760], [395, 760, 610, 805], [395, 805, 410, 855], [0, 855, 395, 900]]) {
+      const [d0, d1] = SKLAD_PIT.door, dv = SKLAD_PIT.divider;
+      for (const [a, b, c, d] of [
+        [0, 0, 45, 900], [0, 0, 610, 45], [565, 45, 610, d0], [565, d1, 610, 760], [395, 760, 610, 805], [395, 805, 410, 855], [0, 855, 395, 900],
+        [45, dv.y0, dv.door[0], dv.y1], [dv.door[1], dv.y0, 565, dv.y1],
+      ]) {
         wb.add(a, b, c, d, pz - 30, lv.z);
       }
       pb.add(45, 45, 565, 855, pz - 30, pz); // podlaha jámy
+      pb.add(565, d0, 610, d1, pz - 30, pz); // práh dveří
       const st = SKLAD_PIT.steps;
       for (let i = 0; i < st.n; i++) {
-        const top = lv.z + (SKLAD_PIT.dz * (i + 1)) / (st.n + 1);
-        sb.add(st.x1 - st.run * (i + 1), st.y0, st.x1 - st.run * i, st.y1, pz, top);
+        const top = pz + ((lv.z - pz) * (i + 1)) / (st.n + 1);
+        sb.add(st.x0 + st.run * i, st.y0, st.x0 + st.run * (i + 1), st.y1, pz - 30, top);
       }
+      // boky schodové jámy v chodbě
+      wb.add(st.x0, st.y0 - 2, st.x0 + st.run * st.n, st.y0, pz - 30, lv.z);
+      wb.add(st.x0, st.y1, st.x0 + st.run * st.n, st.y1 + 2, pz - 30, lv.z);
+      wb.add(st.x0 + st.run * st.n, st.y0, st.x0 + st.run * st.n + 2, st.y1, pz - 30, lv.z);
       const [gx0, gy0, gx1, gy1] = GARAGE.room;
       pb.add(gx0, gy0, gx1, gy1, lv.z, lv.z + GARAGE.floor);
       const [rx0, ry0, rx1, ry1] = GARAGE.ramp;
