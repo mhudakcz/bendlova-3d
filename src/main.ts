@@ -34,7 +34,7 @@ app.appendChild(labelRenderer.domElement);
 
 const scene = new THREE.Scene();
 scene.background = new THREE.Color('#cbdbe5');
-scene.fog = new THREE.Fog('#cbdbe5', 160, 900);
+scene.fog = new THREE.Fog('#cbdbe5', 250, 1900);
 
 const camera = new THREE.PerspectiveCamera(50, innerWidth / innerHeight, 0.05, 2500);
 camera.position.set(-14, 16, 24);
@@ -79,7 +79,7 @@ orbit.target.set(5.5, 3, 7);
 orbit.enableDamping = true;
 orbit.maxPolarAngle = Math.PI * 0.495;
 orbit.minDistance = 3;
-orbit.maxDistance = 900; // oddálení na celé okolí
+orbit.maxDistance = 1800; // oddálení na celé okolí (~1 km)
 orbit.screenSpacePanning = false; // posun po zemi (pravé tlačítko / dva prsty)
 orbit.panSpeed = 1.2;
 const desiredTarget = orbit.target.clone();
@@ -97,7 +97,7 @@ function flyToFloor() {
 }
 function flyOverview() {
   desiredTarget.set(10, 0, 20);
-  desiredCam = new THREE.Vector3(-260, 330, 420);
+  desiredCam = new THREE.Vector3(-520, 640, 820);
   flying = true;
 }
 

@@ -856,7 +856,7 @@ export function buildSurroundings(scene: THREE.Scene) {
 
   // terén s otvorem pro dům
   // plochý terén kolem domu (s otvory pro dům a sjezd); dál navazuje výšková mřížka okolí
-  const LX0 = -25, LX1 = 35, LY0 = -20, LY1 = 40; // násobky kroku mřížky (5 m)
+  const LX0 = -24, LX1 = 32, LY0 = -24, LY1 = 40; // násobky kroku mřížky (8 m)
   const ground = new THREE.Shape([
     new THREE.Vector2(LX0, LY0), new THREE.Vector2(LX1, LY0),
     new THREE.Vector2(LX1, LY1), new THREE.Vector2(LX0, LY1),
@@ -1033,7 +1033,7 @@ export function buildSurroundings(scene: THREE.Scene) {
   }
   // ---- výšková mřížka terénu okolí (5 m), plochy (trávník, park, parkoviště…) jako barvy vrcholů
   {
-    const R = 640, ST = 5, N = Math.round((2 * R) / ST) + 1;
+    const R = 1096, ST = 8, N = Math.round((2 * R) / ST) + 1; // okolí ~1 km
     const pos = new Float32Array(N * N * 3), colA = new Float32Array(N * N * 3);
     const base = new THREE.Color('#8a9c6c'), tmp = new THREE.Color();
     for (let j = 0; j < N; j++) for (let i = 0; i < N; i++) {
@@ -1084,25 +1084,86 @@ export function buildSurroundings(scene: THREE.Scene) {
   }
   // ---- tramvajové a železniční koleje
   {
-    const railGeos: THREE.BufferGeometry[] = [];
+    const railGeos: THREE.BufferGeometry[] = [], bedGeos: THREE.BufferGeometry[] = [];
+    const poleSpots: [number, number, number, number][] = [];
+    const wireLines: THREE.Vector3[] = [];
+    const waterGeos: THREE.BufferGeometry[] = [];
+    const WATER: Record<string, number> = { river: 14, canal: 8, stream: 3, ditch: 1.5 };
     for (const r0 of OSM.rails) {
       const r = { ...r0, pts: densify(r0.pts, 6) };
-      for (const off of [-0.72, 0.72]) {
-        const pos: number[] = [];
+      if (WATER[r.kind]) {
+        const w = WATER[r.kind] / 2, pos: number[] = [];
         for (let i = 0; i < r.pts.length - 1; i++) {
           const [ax, ay] = r.pts[i], [bx, by] = r.pts[i + 1];
-          const dx = bx - ax, dy = by - ay, L = Math.hypot(dx, dy) || 1, nx = -dy / L, ny = dx / L;
-          const a1 = [ax + nx * (off - 0.04), ay + ny * (off - 0.04)], a2 = [ax + nx * (off + 0.04), ay + ny * (off + 0.04)];
-          const b1 = [bx + nx * (off - 0.04), by + ny * (off - 0.04)], b2 = [bx + nx * (off + 0.04), by + ny * (off + 0.04)];
-          for (const p of [a1, b1, b2, a1, b2, a2]) pos.push(p[0], terrainY(p[0], p[1]) + 0.06, p[1]);
+          const dx = bx - ax, dy = by - ay, L = Math.hypot(dx, dy) || 1, nx = (-dy / L) * w, ny = (dx / L) * w;
+          const q = [[ax + nx, ay + ny], [bx + nx, by + ny], [bx - nx, by - ny], [ax - nx, ay - ny]];
+          for (const p of [q[0], q[1], q[2], q[0], q[2], q[3]]) pos.push(p[0], terrainY(p[0], p[1]) + 0.15, p[1]);
         }
         const g = new THREE.BufferGeometry();
         g.setAttribute('position', new THREE.Float32BufferAttribute(pos, 3));
         g.computeVertexNormals();
-        railGeos.push(g);
+        waterGeos.push(g);
+        continue;
+      }
+      // těleso trati (pás pod kolejemi), výrazné kolejnice, u tramvaje sloupy trakčního vedení
+      const ribbon = (o0: number, o1: number, dy: number) => {
+        const pos: number[] = [];
+        for (let i = 0; i < r.pts.length - 1; i++) {
+          const [ax, ay] = r.pts[i], [bx, by] = r.pts[i + 1];
+          const dx = bx - ax, dy2 = by - ay, L = Math.hypot(dx, dy2) || 1, nx = -dy2 / L, ny = dx / L;
+          const q = [[ax + nx * o0, ay + ny * o0], [bx + nx * o0, by + ny * o0], [bx + nx * o1, by + ny * o1], [ax + nx * o1, ay + ny * o1]];
+          for (const pt of [q[0], q[1], q[2], q[0], q[2], q[3]]) pos.push(pt[0], terrainY(pt[0], pt[1]) + dy, pt[1]);
+        }
+        const g = new THREE.BufferGeometry();
+        g.setAttribute('position', new THREE.Float32BufferAttribute(pos, 3));
+        g.computeVertexNormals();
+        return g;
+      };
+      const tram = r.kind === 'tram';
+      bedGeos.push(ribbon(tram ? -1.6 : -2.0, tram ? 1.6 : 2.0, 0.18));
+      for (const off of [-0.72, 0.72]) railGeos.push(ribbon(off - 0.06, off + 0.06, 0.24));
+      if (tram) {
+        let acc = 0;
+        for (let i = 0; i < r.pts.length - 1; i++) {
+          const [ax, ay] = r.pts[i], [bx, by] = r.pts[i + 1];
+          const L = Math.hypot(bx - ax, by - ay);
+          acc += L;
+          if (acc < 32) continue;
+          acc = 0;
+          const nx = -(by - ay) / (L || 1), ny = (bx - ax) / (L || 1);
+          const px = bx + nx * 2.4, py = by + ny * 2.4;
+          poleSpots.push([px, terrainY(px, py), py, Math.atan2(ny, nx)]);
+        }
+        // trolej (troleje nad kolejemi)
+        const pts = r.pts.map(([x, y]) => new THREE.Vector3(x, terrainY(x, y) + 6, y));
+        wireLines.push(...pts.slice(0, -1).flatMap((p0, i) => [p0, pts[i + 1]]));
       }
     }
-    if (railGeos.length) group.add(new THREE.Mesh(mergeGeometries(railGeos, false), new THREE.MeshStandardMaterial({ color: '#8d9196', metalness: 0.7, roughness: 0.35, side: THREE.DoubleSide })));
+    if (waterGeos.length) group.add(new THREE.Mesh(mergeGeometries(waterGeos, false), new THREE.MeshStandardMaterial({ color: '#5e94b8', roughness: 0.2, metalness: 0.1, side: THREE.DoubleSide })));
+    if (bedGeos.length) {
+      const bed = new THREE.Mesh(mergeGeometries(bedGeos, false), new THREE.MeshStandardMaterial({ color: '#6f6a63', roughness: 0.95, side: THREE.DoubleSide, polygonOffset: true, polygonOffsetFactor: -2, polygonOffsetUnits: -2 }));
+      bed.receiveShadow = true;
+      group.add(bed);
+    }
+    if (railGeos.length) group.add(new THREE.Mesh(mergeGeometries(railGeos, false), new THREE.MeshStandardMaterial({ color: '#c3c7cb', metalness: 0.8, roughness: 0.25, side: THREE.DoubleSide, polygonOffset: true, polygonOffsetFactor: -3, polygonOffsetUnits: -3 })));
+    if (poleSpots.length) {
+      // sloupy trakčního vedení s výložníkem nad trať
+      const poleGeo = new THREE.CylinderGeometry(0.1, 0.14, 7, 8);
+      poleGeo.translate(0, 3.5, 0);
+      const arm = new THREE.BoxGeometry(2.6, 0.08, 0.08);
+      arm.translate(-1.3, 6.6, 0);
+      const pg = mergeGeometries([poleGeo.toNonIndexed(), arm.toNonIndexed()], false);
+      const poles = new THREE.InstancedMesh(pg, new THREE.MeshStandardMaterial({ color: '#5d6166', metalness: 0.5, roughness: 0.5 }), poleSpots.length);
+      const m4 = new THREE.Matrix4(), qq = new THREE.Quaternion(), up = new THREE.Vector3(0, 1, 0);
+      poleSpots.forEach(([x, y, z, ang], i) => {
+        qq.setFromAxisAngle(up, -ang);
+        m4.compose(new THREE.Vector3(x, y, z), qq, new THREE.Vector3(1, 1, 1));
+        poles.setMatrixAt(i, m4);
+      });
+      poles.castShadow = true;
+      group.add(poles);
+    }
+    if (wireLines.length) group.add(new THREE.LineSegments(new THREE.BufferGeometry().setFromPoints(wireLines), new THREE.LineBasicMaterial({ color: '#3a3a3a' })));
   }
   scene.add(group);
   return { context: group, ground: [groundMesh, ...terrainMeshes], buildingColliders: [bWalls] };

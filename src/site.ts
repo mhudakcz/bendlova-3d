@@ -294,16 +294,43 @@ export function buildSite(scene: THREE.Scene) {
   const park = { x0: Math.min(...lx), x1: Math.max(...lx), y0: Math.min(...ly), y1: Math.max(...ly) };
   const inPark = (p: Pt) => p[0] > park.x0 + 0.5 && p[0] < park.x1 - 0.5 && p[1] > park.y0 + 0.5 && p[1] < park.y1 - 0.5;
   // úseky lomené čáry, které leží na straně parku / na straně domů
-  const runs = (pts: Pt[], side: number, offset: number) => {
+  // vozovky všech ulic v prostorové mřížce – na křižovatkách chodník/obrubník končí u okraje příčné vozovky
+  type Carr = { a: Pt; b: Pt; w: number; road: object };
+  const CC = 16, carrMap = new Map<string, Carr[]>();
+  for (const r of roads) {
+    const w = WIDTH[r.kind];
+    for (let i = 0; i < r.pts.length - 1; i++) {
+      const a = r.pts[i], b = r.pts[i + 1], pad = w / 2 + 1;
+      for (let cx = Math.floor((Math.min(a[0], b[0]) - pad) / CC); cx <= Math.floor((Math.max(a[0], b[0]) + pad) / CC); cx++)
+        for (let cy = Math.floor((Math.min(a[1], b[1]) - pad) / CC); cy <= Math.floor((Math.max(a[1], b[1]) + pad) / CC); cy++) {
+          const key = cx + ',' + cy;
+          if (!carrMap.has(key)) carrMap.set(key, []);
+          carrMap.get(key)!.push({ a, b, w, road: r });
+        }
+    }
+  }
+  const onOtherCarriage = (p: Pt, self: object, margin: number) =>
+    (carrMap.get(Math.floor(p[0] / CC) + ',' + Math.floor(p[1] / CC)) ?? []).some(({ a, b, w, road }) => {
+      if (road === self) return false;
+      const dx = b[0] - a[0], dy = b[1] - a[1], l2 = dx * dx + dy * dy || 1;
+      const t = Math.max(0, Math.min(1, ((p[0] - a[0]) * dx + (p[1] - a[1]) * dy) / l2));
+      return Math.hypot(p[0] - a[0] - dx * t, p[1] - a[1] - dy * t) < w / 2 + margin;
+    });
+  const runs = (pts: Pt[], side: number, offset: number, self?: object, inner = 0) => {
     const out: { park: boolean; pts: Pt[] }[] = [];
+    let broken = true;
     for (let i = 0; i < pts.length - 1; i++) {
       const [ax, ay] = pts[i], [bx, by] = pts[i + 1];
       const dx = bx - ax, dy = by - ay, l = Math.hypot(dx, dy) || 1;
-      const probe: Pt = [(ax + bx) / 2 - (dy / l) * side * offset, (ay + by) / 2 + (dx / l) * side * offset];
+      const off = (o: number, t: number): Pt => [ax + dx * t - (dy / l) * side * o, ay + dy * t + (dx / l) * side * o];
+      const probe = off(offset, 0.5);
+      // úsek přes vozovku jiné ulice vynechat (křižovatka)
+      if (self && [0, 0.5, 1].some((t) => onOtherCarriage(off(inner, t), self, 0.3) || onOtherCarriage(off(offset, t), self, 0.3))) { broken = true; continue; }
       const isPark = inPark(probe);
       const last = out.at(-1);
-      if (last && last.park === isPark) last.pts.push(pts[i + 1]);
+      if (last && !broken && last.park === isPark) last.pts.push(pts[i + 1]);
       else out.push({ park: isPark, pts: [pts[i], pts[i + 1]] });
+      broken = false;
     }
     return out;
   };
@@ -321,8 +348,10 @@ export function buildSite(scene: THREE.Scene) {
     if (!WITH_WALK.has(r.kind)) continue;
     for (const side of [-1, 1]) {
       const o0 = (side * W) / 2;
-      if (near) put(curbMat, strip(r.pts, Math.min(o0, o0 + side * 0.15), Math.max(o0, o0 + side * 0.15), G + CURB + 0.005, closed, 1, CURB));
-      for (const run of runs(r.pts, side, W / 2 + 1.5)) {
+      if (near) for (const run of runs(r.pts, side, W / 2 + 0.1, r, W / 2)) {
+        put(curbMat, strip(run.pts, Math.min(o0, o0 + side * 0.15), Math.max(o0, o0 + side * 0.15), G + CURB + 0.005, false, 1, CURB));
+      }
+      for (const run of runs(r.pts, side, W / 2 + WALK_W, r, W / 2 + 0.2)) {
         if (run.park && r === loop) {
           // park lemuje živý plot z keřů vysoký ~2 m, pás 1,5 m
           const HEDGE_H = 2.0;
@@ -338,7 +367,17 @@ export function buildSite(scene: THREE.Scene) {
   // samostatné pěšiny daleko od silnic (cesty v parcích, mezi domy)
   const segsOf = (pts: Pt[]) => pts.slice(0, -1).map((q, i) => [q, pts[i + 1]] as [Pt, Pt]);
   const roadSegs = roads.filter((r) => WITH_WALK.has(r.kind)).flatMap((r) => segsOf(r.pts).map((sg) => ({ sg, w: WIDTH[r.kind] })));
-  const nearRoad = (p: Pt) => roadSegs.some(({ sg: [q, e], w }) => {
+  const CELL = 20, cellMap = new Map<string, typeof roadSegs>();
+  for (const rs of roadSegs) {
+    const [[ax, ay], [bx, by]] = rs.sg, pad = rs.w / 2 + WALK_W + 2;
+    for (let cx = Math.floor((Math.min(ax, bx) - pad) / CELL); cx <= Math.floor((Math.max(ax, bx) + pad) / CELL); cx++)
+      for (let cy = Math.floor((Math.min(ay, by) - pad) / CELL); cy <= Math.floor((Math.max(ay, by) + pad) / CELL); cy++) {
+        const key = cx + ',' + cy;
+        if (!cellMap.has(key)) cellMap.set(key, []);
+        cellMap.get(key)!.push(rs);
+      }
+  }
+  const nearRoad = (p: Pt) => (cellMap.get(Math.floor(p[0] / CELL) + ',' + Math.floor(p[1] / CELL)) ?? []).some(({ sg: [q, e], w }) => {
     const dx = e[0] - q[0], dy = e[1] - q[1], l2 = dx * dx + dy * dy || 1;
     const t = Math.max(0, Math.min(1, ((p[0] - q[0]) * dx + (p[1] - q[1]) * dy) / l2));
     return Math.hypot(p[0] - q[0] - dx * t, p[1] - q[1] - dy * t) < w / 2 + WALK_W + 1.5;
@@ -355,6 +394,66 @@ export function buildSite(scene: THREE.Scene) {
     const w = r.kind === 'pedestrian' ? 3 : r.kind === 'path' ? 1.4 : 1.8;
     for (const sg of segs) put(paverMat, strip(sg, -w / 2, w / 2, G + 0.06, false, pr));
   }
+  // ---- názvy ulic položené na vozovce (ve směru ulice, na delších ulicích opakovaně)
+  {
+    const texCache = new Map<string, { tex: THREE.CanvasTexture; aspect: number }>();
+    const labelTex = (name: string) => {
+      if (texCache.has(name)) return texCache.get(name)!;
+      const c = document.createElement('canvas');
+      const g = c.getContext('2d')!;
+      const fs = 64;
+      g.font = `600 ${fs}px "IBM Plex Sans", Arial, sans-serif`;
+      const w = Math.ceil(g.measureText(name).width) + 24;
+      c.width = w; c.height = fs + 24;
+      g.font = `600 ${fs}px "IBM Plex Sans", Arial, sans-serif`;
+      g.textBaseline = 'middle';
+      g.lineWidth = 8; g.strokeStyle = 'rgba(40,40,40,.55)'; g.strokeText(name, 12, c.height / 2);
+      g.fillStyle = 'rgba(255,255,255,.92)'; g.fillText(name, 12, c.height / 2);
+      const tex = new THREE.CanvasTexture(c);
+      tex.colorSpace = THREE.SRGBColorSpace;
+      tex.anisotropy = 8;
+      const v = { tex, aspect: c.width / c.height };
+      texCache.set(name, v);
+      return v;
+    };
+    const labelMat = new Map<string, THREE.MeshBasicMaterial>();
+    for (const r of roads) {
+      if (!r.name || !WITH_WALK.has(r.kind) && r.kind !== 'service') continue;
+      // délky úseků
+      const segL = r.pts.slice(0, -1).map((p, i) => Math.hypot(r.pts[i + 1][0] - p[0], r.pts[i + 1][1] - p[1]));
+      const total = segL.reduce((a, b) => a + b, 0);
+      if (total < 35) continue;
+      const count = Math.max(1, Math.floor(total / 160));
+      const { tex, aspect } = labelTex(r.name);
+      if (!labelMat.has(r.name)) labelMat.set(r.name, new THREE.MeshBasicMaterial({ map: tex, transparent: true, depthWrite: false, polygonOffset: true, polygonOffsetFactor: -4, polygonOffsetUnits: -4 }));
+      const H = Math.min(2.6, WIDTH[r.kind] * 0.5), W = H * aspect;
+      for (let k = 0; k < count; k++) {
+        let target = ((k + 0.5) / count) * total, i = 0;
+        while (i < segL.length - 1 && target > segL[i]) { target -= segL[i]; i++; }
+        const [ax, ay] = r.pts[i], [bx, by] = r.pts[i + 1];
+        const t = segL[i] ? target / segL[i] : 0;
+        const x = ax + (bx - ax) * t, y = ay + (by - ay) * t;
+        let ang = Math.atan2(by - ay, bx - ax);
+        if (ang > Math.PI / 2) ang -= Math.PI; else if (ang < -Math.PI / 2) ang += Math.PI; // aby text nebyl vzhůru nohama
+        // nápis rozdělený po délce – každý vrchol sedí na terénu (ve svahu se nepropadá)
+        const geo = new THREE.PlaneGeometry(W, H, Math.max(2, Math.ceil(W / 1.5)), 1);
+        const tr = new THREE.Object3D();
+        tr.rotation.order = 'YXZ';
+        tr.rotation.set(-Math.PI / 2, -ang, 0);
+        tr.position.set(x, 0, y);
+        tr.updateMatrix();
+        geo.applyMatrix4(tr.matrix);
+        const lift = distHouse(r) < 70 ? 0.06 : 0.25;
+        const gp = geo.attributes.position;
+        for (let vi = 0; vi < gp.count; vi++) gp.setY(vi, terrainY(gp.getX(vi), gp.getZ(vi)) + lift);
+        const m = new THREE.Mesh(geo, labelMat.get(r.name)!);
+        m.renderOrder = 2;
+        m.raycast = () => {};
+        group.add(m);
+      }
+    }
+  }
+
   for (const [m, gs] of bucket) {
     const merged = mergeGeometries(gs, false);
     liftToTerrain(merged.attributes.position as THREE.BufferAttribute);
