@@ -423,7 +423,7 @@ export function buildHouse(scene: THREE.Scene) {
     const pb = new BoxBuilder(); // zpevněné plochy: balkon, garáž, sjezd
     const gb = new BoxBuilder(); // zelené plechové prvky (stříška nad garáží)
     if (lv.id === 'P') pb.add(850, STAIR_FRONT.y, 1050, STAIR_FRONT.y + 50, 95, 108); // stříška nad vstupem
-    if (lv.id === 'S') gb.add(GARAGE.gate[0] - 30, 1400, STAIR_FRONT.x0, 1455, -42, -34); // zelená stříška nad vraty
+    if (lv.id === 'S') gb.add(395, 1400, STAIR_FRONT.x0, 1455, -42, -34); // zelená stříška nad vraty
     if (lv.id === 'P' || lv.id === '1P') pb.add(BALCONY[0], BALCONY[1], BALCONY[2], BALCONY[3], lv.z - 20, lv.z);
     // garáž: zvýšená podlaha + sjezd z ulice s opěrnými zídkami
     if (lv.id === 'S') {

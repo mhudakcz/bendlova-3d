@@ -39,8 +39,8 @@ export type FloorType =
 export const GARAGE = {
   room: [395, 805, 830, 1355] as [number, number, number, number],
   floor: 45, // podlaha garáže nad podlahou suterénu (cm) → −2,55 m
-  gate: [470, 805] as [number, number], // vrata v uliční zdi (čtyřkřídlá, skoro celá šířka)
-  ramp: [455, 1400, 810, 1760] as [number, number, number, number], // sjezd (x0, y0, x1, y1)
+  gate: [460, 760] as [number, number], // čtyřkřídlá vrata ~3 m (odměřeno z fotky)
+  ramp: [445, 1400, 790, 1760] as [number, number, number, number], // sjezd (x0, y0, x1, y1)
 };
 
 // Balkon v rohu výřezu: celá šířka výřezu (350 cm), hloubka 150 cm od zdi ložnice
