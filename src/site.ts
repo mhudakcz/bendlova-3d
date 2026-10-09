@@ -10,6 +10,22 @@ type Ctx = { roads: { kind: string; name: string; pts: Pt[] }[] };
 const G = TERRAIN_Z / 100; // výška terénu (m)
 
 const FX = 1.0; // úsek plotu kolmo k ulici vedle schodů (předzahrádka s keři)
+
+// ---- výškové poměry kolem domu ----
+// cestička kolem domu a dvorek jsou v úrovni ulice (G); zahrada je o kus výš a mírně stoupá.
+// Zlom terénu podél cestičky je svah, za domem ho řeší zídka mezi dvorkem a zahradou se schody.
+const BREAK_X = -3.5; // zlom terénu (horní hrana svahu) podél boku domu
+const PATH_X: [number, number] = [-2.0, -1.0]; // cestička podél boku domu
+const YARD_Y = -3.5; // zídka mezi dvorkem a zahradou
+const YARD_STEPS = { x0: -2.0, x1: -1.0, n: 3, run: 0.3 };
+const FRONT_YARD_H = 0.2; // předzahrádka je kousek nad chodníkem
+/** výška terénu zahrady (m) – mírný svah směrem od domu */
+const hGarden = (x: number, y: number) => G + 0.5 - 0.015 * (x - BREAK_X) - 0.008 * y;
+// vyvýšená část zahrady (nad zlomem terénu a za zídkou dvorku)
+const HIGH: Pt[] = [
+  [11.0, YARD_Y], [10.09, -25.38], [-30.81, -17.62], [-30.16, 6.44], [BREAK_X, 7.17], [BREAK_X, YARD_Y],
+  [YARD_STEPS.x0, YARD_Y], [YARD_STEPS.x0, YARD_Y - 3 * 0.3], [YARD_STEPS.x1, YARD_Y - 3 * 0.3], [YARD_STEPS.x1, YARD_Y],
+];
 // Plot pozemku – odměřeno z leteckého snímku (žlutá čára), metry v souřadnicích půdorysu.
 const FENCE_BACK: Pt[] = [
   [11.0, 0.0], [11.0, -1.43], [10.09, -25.38], [-30.81, -17.62], [-30.16, 6.44],
@@ -21,8 +37,21 @@ const STREET_FENCE: [Pt, Pt] = [[FX, 18.75], [PARTY_X, 18.85]];
 const BEDS = { x0: 1.6, y0: -20.0, y1: -14.2, n: 5, w: 0.7, gap: 0.35 };
 // keře v předzahrádce vedle schodů (x, y, poloměr)
 const BUSHES: [number, number, number][] = [
-  [1.6, 12.6, 0.6], [2.4, 12.4, 0.5], [1.5, 14.2, 0.7], [2.3, 16.2, 0.55], [1.6, 17.6, 0.65],
-  [3.0, 17.9, 0.45], [2.9, 13.3, 0.4],
+  [1.3, 12.4, 0.35], [3.0, 12.4, 0.4], [1.3, 13.6, 0.35], [2.9, 17.6, 0.55], [1.5, 17.2, 0.5],
+  [3.7, 17.9, 0.45], [3.05, 13.4, 0.35], [2.0, 16.3, 0.5],
+];
+// cestička (dlažba v úrovni ulice): od schodů u garáže kolem balkonů a podél skladu až na dvorek
+const PATHS: [number, number, number, number][] = [
+  [1.6, 14.05, 3.25, 15.2], // od schodů ze sjezdu
+  [1.6, 10.6, 2.6, 14.05], // předzahrádkou
+  [PATH_X[0], 10.6, 2.6, 11.6], // kolem balkonů
+  [PATH_X[0], YARD_Y, PATH_X[1], 10.6], // podél boku domu (u skladu)
+  [PATH_X[0], YARD_Y, 11.0, 0.0], // dvorek za domem
+  [8.65, 15.3, 9.9, 18.8], // od branky ke vstupním dveřím
+];
+// vyvýšené plochy předzahrádky (trávník s keři)
+const FRONT_BEDS: [number, number, number, number][] = [
+  [FX, 11.65, 1.6, 18.75], [1.6, 15.2, 4.25, 18.75], [2.6, 11.6, 3.5, 14.0],
 ];
 const FENCE_SIDE: Pt[] = [[PARTY_X, 18.85], [PARTY_X, 15.3]];
 const GARAGE_GATE: [number, number] = [4.45, 7.95]; // x na uličním plotu
@@ -158,6 +187,12 @@ function inside(p: Pt, poly: Pt[]) {
   }
   return c;
 }
+/** výška terénu v bodě (m) */
+function terrainAt(p: Pt) {
+  if (inside(p, HIGH)) return hGarden(p[0], p[1]);
+  if (FRONT_BEDS.some(([x0, y0, x1, y1]) => p[0] >= x0 && p[0] <= x1 && p[1] >= y0 && p[1] <= y1)) return G + FRONT_YARD_H;
+  return G;
+}
 const trunkMat = new THREE.MeshStandardMaterial({ color: '#6b5440', roughness: 1 });
 const leafMats = ['#5f7f45', '#6d8c4c', '#567a48', '#7b9450'].map((c) => new THREE.MeshStandardMaterial({ color: c, roughness: 0.95, flatShading: true }));
 function tree(x: number, y: number, h: number, r: number, k: number, conifer = false) {
@@ -172,13 +207,14 @@ function tree(x: number, y: number, h: number, r: number, k: number, conifer = f
   crown.scale.y = conifer ? 1 : 0.85;
   for (const m of [trunk, crown]) { m.castShadow = true; m.receiveShadow = true; }
   t.add(trunk, crown);
-  t.position.set(x, G, y);
+  t.position.set(x, terrainAt([x, y]), y);
   return t;
 }
 
 /** Plot: sloupky, vodorovná trubka, pletivo; volitelně betonová podezdívka. */
 function fence(group: THREE.Group, colliders: THREE.Object3D[], a: Pt, b: Pt, opt: { base?: number; h?: number } = {}) {
   const base = opt.base ?? 0, h = opt.h ?? 1.4;
+  const g0 = (terrainAt(a) + terrainAt(b)) / 2 - 0.05; // plot stojí na terénu
   const dx = b[0] - a[0], dy = b[1] - a[1], L = Math.hypot(dx, dy);
   if (L < 0.05) return;
   const ang = Math.atan2(dy, dx);
@@ -186,7 +222,7 @@ function fence(group: THREE.Group, colliders: THREE.Object3D[], a: Pt, b: Pt, op
   const [cx, cy] = mid(0.5);
   if (base > 0) {
     const w = new THREE.Mesh(new THREE.BoxGeometry(L, base, 0.2), concreteMat);
-    w.position.set(cx, G + base / 2, cy);
+    w.position.set(cx, g0 + base / 2, cy);
     w.rotation.y = -ang;
     w.castShadow = w.receiveShadow = true;
     group.add(w);
@@ -197,7 +233,7 @@ function fence(group: THREE.Group, colliders: THREE.Object3D[], a: Pt, b: Pt, op
   const mt = (panel.material as THREE.MeshStandardMaterial).map!;
   mt.repeat.set(L / 0.6, (h - 0.08) / 0.6);
   mt.needsUpdate = true;
-  panel.position.set(cx, G + base + (h - 0.08) / 2, cy);
+  panel.position.set(cx, g0 + base + (h - 0.08) / 2, cy);
   panel.rotation.y = -ang;
   group.add(panel);
   colliders.push(panel);
@@ -205,14 +241,14 @@ function fence(group: THREE.Group, colliders: THREE.Object3D[], a: Pt, b: Pt, op
   rail.rotation.z = Math.PI / 2;
   const railG = new THREE.Group();
   railG.add(rail);
-  railG.position.set(cx, G + base + h, cy);
+  railG.position.set(cx, g0 + base + h, cy);
   railG.rotation.y = -ang;
   group.add(railG);
   const n = Math.max(1, Math.round(L / 2.5));
   for (let i = 0; i <= n; i++) {
     const [px, py] = mid(i / n);
     const post = new THREE.Mesh(new THREE.CylinderGeometry(0.035, 0.035, h + 0.05, 8), fenceGreen);
-    post.position.set(px, G + base + (h + 0.05) / 2, py);
+    post.position.set(px, g0 + base + (h + 0.05) / 2, py);
     post.castShadow = true;
     group.add(post);
   }
@@ -332,25 +368,90 @@ export function buildSite(scene: THREE.Scene) {
   });
   for (let i = 0; i < BEDS.n; i++) {
     const x0 = BEDS.x0 + i * (BEDS.w + BEDS.gap);
-    group.add(flat(polyShape([[x0, BEDS.y0], [x0 + BEDS.w, BEDS.y0], [x0 + BEDS.w, BEDS.y1], [x0, BEDS.y1]]), G + 0.025, soilMat, 1));
+    group.add(flat(polyShape([[x0, BEDS.y0], [x0 + BEDS.w, BEDS.y0], [x0 + BEDS.w, BEDS.y1], [x0, BEDS.y1]]), hGarden(x0 + BEDS.w / 2, (BEDS.y0 + BEDS.y1) / 2) + 0.025, soilMat, 1));
   }
 
   // ---------------------------------------------------------- keře
   for (const [x, y, r] of BUSHES) {
     const b = new THREE.Mesh(new THREE.IcosahedronGeometry(r, 1), leafMats[(x * 10) % leafMats.length | 0]);
-    b.position.set(x, G + r * 0.7, y);
+    b.position.set(x, terrainAt([x, y]) + r * 0.7, y);
     b.scale.y = 0.8;
     b.castShadow = b.receiveShadow = true;
     group.add(b);
   }
 
   // ---------------------------------------------------------- zahrada a plot
-  group.add(flat(polyShape(GARDEN), G + 0.02, lawnMat, lawnTex.userData.repeat as number));
+  // vyvýšená zahrada (mírný svah)
+  {
+    const contour = HIGH.map(([x, y]) => new THREE.Vector2(x, y));
+    const tris = THREE.ShapeUtils.triangulateShape(contour, []);
+    const pos: number[] = [], uv: number[] = [];
+    const rep = lawnTex.userData.repeat as number;
+    for (const t of tris) for (const i of [t[0], t[2], t[1]]) {
+      const [x, y] = HIGH[i];
+      pos.push(x, hGarden(x, y), y); uv.push(x * rep, y * rep);
+    }
+    // svah od cestičky ke zlomu terénu
+    const e = (x: number, y: number, h: number) => { pos.push(x, h, y); uv.push(x * rep, y * rep); };
+    const y0 = YARD_Y, y1 = 7.17;
+    e(BREAK_X, y0, hGarden(BREAK_X, y0)); e(PATH_X[0], y1, G); e(BREAK_X, y1, hGarden(BREAK_X, y1));
+    e(BREAK_X, y0, hGarden(BREAK_X, y0)); e(PATH_X[0], y0, G); e(PATH_X[0], y1, G);
+    const g = new THREE.BufferGeometry();
+    g.setAttribute('position', new THREE.Float32BufferAttribute(pos, 3));
+    g.setAttribute('uv', new THREE.Float32BufferAttribute(uv, 2));
+    g.computeVertexNormals();
+    const m = new THREE.Mesh(g, lawnMat);
+    m.receiveShadow = true;
+    group.add(m);
+    walkables.push(m);
+  }
+  // zídka mezi dvorkem a zahradou (s mezerou pro schody) + schody nahoru
+  const wallMat = new THREE.MeshStandardMaterial({ color: '#b3ada3', roughness: 0.95 });
+  const box = (x0: number, y0: number, x1: number, y1: number, z0: number, z1: number, m: THREE.Material, collide = true, walk = false) => {
+    const b = new THREE.Mesh(new THREE.BoxGeometry(x1 - x0, z1 - z0, y1 - y0), m);
+    b.position.set((x0 + x1) / 2, (z0 + z1) / 2, (y0 + y1) / 2);
+    b.castShadow = b.receiveShadow = true;
+    group.add(b);
+    if (collide) colliders.push(b);
+    if (walk) walkables.push(b);
+    return b;
+  };
+  for (const [xa, xb] of [[BREAK_X, YARD_STEPS.x0], [YARD_STEPS.x1, 11.0]] as [number, number][]) {
+    for (let x = xa; x < xb - 0.01; x += 1) {
+      const x2 = Math.min(xb, x + 1);
+      box(x, YARD_Y - 0.2, x2, YARD_Y, G - 0.1, Math.max(hGarden(x, YARD_Y), hGarden(x2, YARD_Y)) + 0.1, wallMat);
+    }
+  }
+  {
+    const top = hGarden((YARD_STEPS.x0 + YARD_STEPS.x1) / 2, YARD_Y - YARD_STEPS.n * YARD_STEPS.run);
+    const rise = (top - G) / YARD_STEPS.n;
+    for (let i = 0; i < YARD_STEPS.n; i++) {
+      box(YARD_STEPS.x0, YARD_Y - YARD_STEPS.run * (i + 1), YARD_STEPS.x1, YARD_Y - YARD_STEPS.run * i, G - 0.05, G + rise * (i + 1), wallMat, false, true);
+    }
+    const yb = YARD_Y - YARD_STEPS.n * YARD_STEPS.run;
+    box(YARD_STEPS.x0 - 0.15, yb, YARD_STEPS.x0, YARD_Y, G - 0.05, top + 0.1, wallMat);
+    box(YARD_STEPS.x1, yb, YARD_STEPS.x1 + 0.15, YARD_Y, G - 0.05, top + 0.1, wallMat);
+  }
+  // dlážděná cestička a dvorek v úrovni ulice
+  for (const [x0, y0, x1, y1] of PATHS) {
+    const m = flat(polyShape([[x0, y0], [x1, y0], [x1, y1], [x0, y1]]), G + 0.015, paverMat, paverTex.userData.repeat as number);
+    group.add(m);
+    walkables.push(m);
+  }
+  // předzahrádka kousek nad chodníkem
+  const bedTop = new THREE.MeshStandardMaterial({ map: lawnTex, roughness: 1 });
+  for (const [x0, y0, x1, y1] of FRONT_BEDS) {
+    const b = box(x0, y0, x1, y1, G - 0.05, G + FRONT_YARD_H, [wallMat, wallMat, bedTop, wallMat, wallMat, wallMat] as unknown as THREE.Material, false, true);
+    const t = lawnTex.clone();
+    t.repeat.set((x1 - x0) / 4, (y1 - y0) / 4);
+    t.needsUpdate = true;
+    (b.material as unknown as THREE.MeshStandardMaterial[])[2] = new THREE.MeshStandardMaterial({ map: t, roughness: 1 });
+  }
   const gRand = rng(42);
   let placed = 0;
   for (let i = 0; i < 200 && placed < 14; i++) {
     const x = -30 + gRand() * 41, y = -25 + gRand() * 32;
-    if (!inside([x, y], GARDEN) || (x > -3 && y > -3)) continue; // ne těsně u domu
+    if (!inside([x, y], HIGH) || (x > -5 && y > -5)) continue; // jen ve vyvýšené zahradě, ne u domu
     if (x > BEDS.x0 - 2 && x < BEDS.x0 + BEDS.n * (BEDS.w + BEDS.gap) + 2 && y > BEDS.y0 - 2 && y < BEDS.y1 + 2) continue; // ne v záhonech
     group.add(tree(x, y, 6 + gRand() * 6, 1.8 + gRand() * 1.6, placed, gRand() < 0.25));
     placed++;

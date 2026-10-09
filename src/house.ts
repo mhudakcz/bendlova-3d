@@ -40,7 +40,7 @@ export const GARAGE = {
   room: [395, 805, 830, 1355] as [number, number, number, number],
   floor: 45, // podlaha garáže nad podlahou suterénu (cm) → −2,55 m
   gate: [460, 760] as [number, number], // čtyřkřídlá vrata ~3 m (odměřeno z fotky)
-  ramp: [445, 1400, 790, 1760] as [number, number, number, number], // sjezd (x0, y0, x1, y1)
+  ramp: [445, 1400, 790, 1875] as [number, number, number, number], // sjezd klesá hned od brány (x0, y0, x1, y1)
 };
 
 // Schody ze sjezdu do garáže nahoru na terén (vlevo od vrat, podél fasády) – cesta do zahrady
@@ -259,6 +259,13 @@ function flatRooms(level: 'P' | '1P'): Room[] {
 }
 
 // ---------- Suterén ----------
+// Velký sklad v suterénu je zapuštěný o 50 cm níž, z chodby do něj vedou schody dolů.
+export const SKLAD_PIT = {
+  dz: -50,
+  outline: [[45, 45], [565, 45], [565, 760], [395, 760], [395, 855], [45, 855]] as [number, number][],
+  steps: { x1: 565, y0: 600, y1: 680, n: 3, run: 30 }, // u dveří z chodby, sestupují směrem k x = 0
+};
+
 const basementWalls: Wall[] = [
   ...outerWalls('S'),
   ...stairHallWalls(),
@@ -268,7 +275,7 @@ const basementWalls: Wall[] = [
   { r: [395, 760, 830, 805], o: [door(700, 780)] }, // chodba | sklep
 ];
 const basementRooms: Room[] = [
-  { name: 'Sklad', r: [45, 45, 565, 855], floor: 'concrete' },
+  { name: 'Sklad', r: [45, 45, 565, 855], floor: 'concrete', dz: SKLAD_PIT.dz },
   { name: 'Sklad', r: [610, 45, 785, 300], floor: 'concrete' },
   { name: 'Prádelna', r: [800, 45, 1070, 300], floor: 'tile' },
   { name: 'Chodba', r: [610, 315, 1070, 760], floor: 'concrete' },

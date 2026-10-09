@@ -1,7 +1,7 @@
 import * as THREE from 'three';
 import { CSS2DObject } from 'three/examples/jsm/renderers/CSS2DRenderer.js';
 import {
-  BALCONY, FOOTPRINT, GARAGE, GARDEN_STEPS, LEVELS, Level, ROOF, Room, STAIR, STAIR_FRONT, STAIR_HOLE, TERRAIN_Z, Wall, roofFaces, roofHeight, DORMER, dormerRoofZ,
+  BALCONY, FOOTPRINT, GARAGE, GARDEN_STEPS, SKLAD_PIT, LEVELS, Level, ROOF, Room, STAIR, STAIR_FRONT, STAIR_HOLE, TERRAIN_Z, Wall, roofFaces, roofHeight, DORMER, dormerRoofZ,
 } from './house';
 import context from './context.json';
 
@@ -380,8 +380,9 @@ function insetPoly(pts: [number, number][], d: number): [number, number][] {
   });
 }
 
-function footprintShape(holes: number[][] = []) {
+function footprintShape(holes: number[][] = [], polyHoles: [number, number][][] = []) {
   const s = new THREE.Shape(insetPoly(FOOTPRINT, 2).map(([x, y]) => new THREE.Vector2(M(x), M(y))));
+  for (const h of polyHoles) s.holes.push(new THREE.Path(h.map(([x, y]) => new THREE.Vector2(M(x), M(y)))));
   for (const [x0, y0, x1, y1] of holes) {
     s.holes.push(new THREE.Path([
       new THREE.Vector2(M(x0), M(y0)), new THREE.Vector2(M(x0), M(y1)),
@@ -432,7 +433,7 @@ export function buildHouse(scene: THREE.Scene) {
       const [hx0, hy0, hx1] = STAIR_HOLE;
       const pts: [number, number][] = [[0, 0], [1100, 0], [1100, STAIR_FRONT.y], [hx1, STAIR_FRONT.y], [hx1, hy0], [hx0, hy0], [hx0, STAIR_FRONT.y], [STAIR_FRONT.x0, STAIR_FRONT.y], [STAIR_FRONT.x0, 1400], [350, 1400], [350, 900], [0, 900]];
       slabShape = new THREE.Shape(insetPoly(pts, 2).map(([x, y]) => new THREE.Vector2(M(x), M(y))));
-    } else slabShape = footprintShape(idx === 0 ? [] : [STAIR_HOLE]);
+    } else slabShape = idx === 0 ? footprintShape([], [SKLAD_PIT.outline]) : footprintShape([STAIR_HOLE]);
     const slabG = new THREE.ExtrudeGeometry(slabShape, { depth: 0.3, bevelEnabled: false });
     slabG.rotateX(Math.PI / 2);
     slabG.translate(0, M(lv.z), 0);
@@ -446,6 +447,17 @@ export function buildHouse(scene: THREE.Scene) {
     if (lv.id === 'P' || lv.id === '1P') pb.add(BALCONY[0], BALCONY[1], BALCONY[2], BALCONY[3], lv.z - 20, lv.z);
     // garáž: zvýšená podlaha + sjezd z ulice s opěrnými zídkami
     if (lv.id === 'S') {
+      // zapuštěný sklad: podlaha o 50 cm níž, zdi protažené dolů, schody od dveří z chodby
+      const pz = lv.z + SKLAD_PIT.dz;
+      for (const [a, b, c, d] of [[0, 0, 45, 900], [0, 0, 610, 45], [565, 45, 610, 760], [395, 760, 610, 805], [395, 805, 410, 855], [0, 855, 395, 900]]) {
+        wb.add(a, b, c, d, pz - 30, lv.z);
+      }
+      pb.add(45, 45, 565, 855, pz - 30, pz); // podlaha jámy
+      const st = SKLAD_PIT.steps;
+      for (let i = 0; i < st.n; i++) {
+        const top = lv.z + (SKLAD_PIT.dz * (i + 1)) / (st.n + 1);
+        sb.add(st.x1 - st.run * (i + 1), st.y0, st.x1 - st.run * i, st.y1, pz, top);
+      }
       const [gx0, gy0, gx1, gy1] = GARAGE.room;
       pb.add(gx0, gy0, gx1, gy1, lv.z, lv.z + GARAGE.floor);
       const [rx0, ry0, rx1, ry1] = GARAGE.ramp;
