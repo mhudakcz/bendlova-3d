@@ -623,7 +623,7 @@ export function buildHouse(scene: THREE.Scene) {
       cb.add(g0, 1372, g1, 1382, bottom, -40);
       // schody ze sjezdu nahoru na terén (cesta kolem domu do zahrady)
       const { x0: sx0, x1: sx1, y0: sy0, y1: sy1, n } = GARDEN_STEPS;
-      const base = -240, rise = (TERRAIN_Z - base) / n, run = (sx1 - sx0) / n;
+      const base = Math.round(rampTop(0, (sy0 + sy1) / 2)), rise = (TERRAIN_Z - base) / n, run = (sx1 - sx0) / n; // od úrovně sjezdu
       pb.add(sx1, sy0, rx0, sy1, base - 30, base); // nástupní plocha u sjezdu
       for (let i = 0; i < n; i++) {
         const t = base + rise * (i + 1);

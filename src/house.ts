@@ -38,7 +38,7 @@ export type FloorType =
 // Garáž v suterénu pod obývákem – vjezd z ulice po sjezdu do vyhloubení
 export const GARAGE = {
   room: [395, 805, 830, 1355] as [number, number, number, number],
-  floor: 45, // podlaha garáže nad podlahou suterénu (cm) → −2,55 m
+  floor: 0, // podlaha garáže v úrovni suterénní chodby (−3,00 m)
   gate: [460, 760] as [number, number], // čtyřkřídlá vrata ~3 m (odměřeno z fotky)
   ramp: [445, 1400, 790, 1875] as [number, number, number, number], // sjezd klesá hned od brány (x0, y0, x1, y1)
 };
@@ -47,10 +47,10 @@ export const GARAGE = {
 export const GARDEN_STEPS = { x0: 290, x1: 425, y0: 1405, y1: 1520, n: 5 }; // 5 betonových stupňů (podle fotek)
 
 // Balkon v rohu výřezu: celá šířka výřezu (350 cm), hloubka 150 cm od zdi ložnice
-export const BALCONY: [number, number, number, number] = [0, 900, 350, 1020];
+export const BALCONY: [number, number, number, number] = [0, 900, 350, 1010]; // hloubka 1,1 m
 // ocelové schody z balkonu v přízemí do zahrady (pro psa): plošinka před koncem balkonu u boční zdi obýváku,
 // rameno vede souběžně s balkonem podél jeho čela směrem od zdi
-export const DOG_STEPS = { plat: [290, 350] as [number, number], y0: BALCONY[3], y1: BALCONY[3] + 60, n: 9, run: 290 / 9 }; // rameno přes celou délku balkonu
+export const DOG_STEPS = { plat: [270, 350] as [number, number], y0: BALCONY[3], y1: BALCONY[3] + 80, n: 9, run: 30 }; // šířka 80 cm, rameno přes celou délku balkonu
 
 export type Level = {
   id: string;
