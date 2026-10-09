@@ -8,6 +8,8 @@ export type Opening = {
   sill: number; // parapet nad úrovní podlaží (cm)
   h: number; // výška otvoru (cm)
   kind: 'window' | 'door';
+  joinTop?: boolean; // okno pokračuje nad tímto kusem (okno přes strop) – bez horní příčky
+  joinBottom?: boolean; // okno pokračuje pod tímto kusem – bez spodní příčky
 };
 
 export type Wall = {
@@ -168,7 +170,7 @@ const STAIR_WINDOWS: [number, number, number, number][] = [
 export function stairWindowsFor(levelZ: number, height: number): Opening[] {
   return STAIR_WINDOWS.flatMap(([a, b, z0, z1]) => {
     const lo = Math.max(z0, levelZ), hi = Math.min(z1, levelZ + height);
-    return hi > lo ? [win(a, b, lo - levelZ, hi - lo)] : [];
+    return hi > lo ? [{ ...win(a, b, lo - levelZ, hi - lo), joinBottom: lo > z0, joinTop: hi < z1 }] : [];
   });
 }
 

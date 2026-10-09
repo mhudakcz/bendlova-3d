@@ -406,12 +406,12 @@ function buildWall(w: Wall, lv: Level, wb: BoxBuilder, rb: BoxBuilder, fb: BoxBu
       const mid = alongX ? (y0 + y1) / 2 : (x0 + x1) / 2;
       const fr = (a: number, b: number, za: number, zz: number, d = 5) =>
         alongX ? fb.add(a, mid - d, b, mid + d, za, zz) : fb.add(mid - d, a, mid + d, b, za, zz);
-      fr(o.a, o.b, zs, zs + f);
-      fr(o.a, o.b, ze - f, ze);
+      if (!o.joinBottom) fr(o.a, o.b, zs, zs + f);
+      if (!o.joinTop) fr(o.a, o.b, ze - f, ze);
       fr(o.a, o.a + f, zs, ze);
       fr(o.b - f, o.b, zs, ze);
       const W = o.b - o.a;
-      const panes = W > 180 ? 3 : W > 70 ? 2 : 1;
+      const panes = W > 180 ? 3 : W > 100 ? 2 : 1; // úzká okna (koupelny) jsou jednokřídlá
       for (let k = 1; k < panes; k++) {
         const c = o.a + (W * k) / panes;
         fr(c - 4, c + 4, zs, ze); // sloupek mezi křídly
@@ -419,10 +419,11 @@ function buildWall(w: Wall, lv: Level, wb: BoxBuilder, rb: BoxBuilder, fb: BoxBu
       // obvod jednotlivých křídel (tenčí profil uvnitř rámu)
       for (let k = 0; k < panes; k++) {
         const a0 = o.a + (W * k) / panes + (k === 0 ? f : 4), a1 = o.a + (W * (k + 1)) / panes - (k === panes - 1 ? f : 4);
-        fr(a0, a1, zs + f, zs + f + 5, 3.5);
-        fr(a0, a1, ze - f - 5, ze - f, 3.5);
-        fr(a0, a0 + 5, zs + f, ze - f, 3.5);
-        fr(a1 - 5, a1, zs + f, ze - f, 3.5);
+        const zb0 = o.joinBottom ? zs : zs + f, ze0 = o.joinTop ? ze : ze - f;
+        if (!o.joinBottom) fr(a0, a1, zb0, zb0 + 5, 3.5);
+        if (!o.joinTop) fr(a0, a1, ze0 - 5, ze0, 3.5);
+        fr(a0, a0 + 5, zb0, ze0, 3.5);
+        fr(a1 - 5, a1, zb0, ze0, 3.5);
       }
       const pg = new THREE.PlaneGeometry(M(o.b - o.a), M(o.h));
       const pm = new THREE.Mesh(pg, glassMat);
