@@ -259,6 +259,9 @@ function flatRooms(level: 'P' | '1P'): Room[] {
 }
 
 // ---------- Suterén ----------
+// Kotel ve skladu 4,5 m² (x 610–785, y 45–300), odtah do komína
+export const BOILER = { x0: 712, y0: 52, x1: 772, y1: 112, h: 90 };
+
 // Velký sklad v suterénu je zapuštěný o 50 cm níž, z chodby do něj vedou schody dolů.
 export const SKLAD_PIT = {
   dz: -50,
@@ -281,7 +284,7 @@ const basementWalls: Wall[] = [
 const basementRooms: Room[] = [
   { name: 'Sklad', r: [45, 45, 565, SKLAD_PIT.divider.y0], floor: 'concrete', dz: SKLAD_PIT.dz },
   { name: 'Sklad', r: [45, SKLAD_PIT.divider.y1, 565, 855], floor: 'concrete', dz: SKLAD_PIT.dz },
-  { name: 'Sklad', r: [610, 45, 785, 300], floor: 'concrete' },
+  { name: 'Sklad / kotelna', r: [610, 45, 785, 300], floor: 'concrete' },
   { name: 'Prádelna', r: [800, 45, 1070, 300], floor: 'tile' },
   { name: 'Chodba', r: [610, 315, 1070, 600], floor: 'concrete' },
   { name: '', r: [700, 600, 1070, 680], floor: 'concrete' },

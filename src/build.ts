@@ -1,7 +1,7 @@
 import * as THREE from 'three';
 import { CSS2DObject } from 'three/examples/jsm/renderers/CSS2DRenderer.js';
 import {
-  BALCONY, FOOTPRINT, GARAGE, GARDEN_STEPS, SKLAD_PIT, LEVELS, Level, ROOF, Room, STAIR, STAIR_FRONT, STAIR_HOLE, TERRAIN_Z, Wall, roofFaces, roofHeight, DORMER, dormerRoofZ,
+  BALCONY, BOILER, FOOTPRINT, GARAGE, GARDEN_STEPS, SKLAD_PIT, LEVELS, Level, ROOF, Room, STAIR, STAIR_FRONT, STAIR_HOLE, TERRAIN_Z, Wall, roofFaces, roofHeight, DORMER, dormerRoofZ,
 } from './house';
 import context from './context.json';
 
@@ -468,6 +468,7 @@ export function buildHouse(scene: THREE.Scene) {
 
     // balkon ve výřezu
     const pb = new BoxBuilder(); // zpevněné plochy: balkon, garáž, sjezd
+    const cb = new BoxBuilder(); // neviditelné zábrany pro chůzi
     const gb = new BoxBuilder(); // zelené plechové prvky (stříška nad garáží)
     if (lv.id === 'P') pb.add(850, STAIR_FRONT.y, 1050, STAIR_FRONT.y + 50, 95, 108); // stříška nad vstupem
     if (lv.id === 'S') gb.add(395, 1400, STAIR_FRONT.x0, 1455, -42, -34); // zelená stříška nad vraty
@@ -494,6 +495,22 @@ export function buildHouse(scene: THREE.Scene) {
       wb.add(st.x0, st.y0 - 2, st.x0 + st.run * st.n, st.y0, pz - 30, lv.z);
       wb.add(st.x0, st.y1, st.x0 + st.run * st.n, st.y1 + 2, pz - 30, lv.z);
       wb.add(st.x0 + st.run * st.n, st.y0, st.x0 + st.run * st.n + 2, st.y1, pz - 30, lv.z);
+      // kotel s kouřovodem
+      {
+        const b = BOILER, z0 = lv.z;
+        const body = new THREE.Mesh(new THREE.BoxGeometry(M(b.x1 - b.x0), M(b.h), M(b.y1 - b.y0)), frameMat);
+        body.position.set(M((b.x0 + b.x1) / 2), M(z0 + b.h / 2), M((b.y0 + b.y1) / 2));
+        const panel = new THREE.Mesh(new THREE.BoxGeometry(M(30), M(12), M(1)), track(new THREE.MeshStandardMaterial({ color: '#3a3f44' })));
+        panel.position.set(M((b.x0 + b.x1) / 2), M(z0 + b.h - 15), M(b.y1 + 0.6));
+        const flueMat = track(new THREE.MeshStandardMaterial({ color: '#9aa0a6', metalness: 0.7, roughness: 0.35 }));
+        const up = new THREE.Mesh(new THREE.CylinderGeometry(M(7), M(7), M(80), 16), flueMat);
+        up.position.set(M((b.x0 + b.x1) / 2), M(z0 + b.h + 40), M((b.y0 + b.y1) / 2));
+        const across = new THREE.Mesh(new THREE.CylinderGeometry(M(7), M(7), M((b.y0 + b.y1) / 2 - 45), 16), flueMat);
+        across.rotation.x = Math.PI / 2;
+        across.position.set(M((b.x0 + b.x1) / 2), M(z0 + b.h + 80), M(((b.y0 + b.y1) / 2 + 45) / 2));
+        for (const m of [body, panel, up, across]) { m.castShadow = true; m.receiveShadow = true; g.add(m); }
+        cb.add(b.x0, b.y0, b.x1, b.y1, z0, z0 + b.h);
+      }
       const [gx0, gy0, gx1, gy1] = GARAGE.room;
       pb.add(gx0, gy0, gx1, gy1, lv.z, lv.z + GARAGE.floor);
       const [rx0, ry0, rx1, ry1] = GARAGE.ramp;
@@ -515,7 +532,6 @@ export function buildHouse(scene: THREE.Scene) {
     }
     // schodiště nahoru z tohoto podlaží
     const stairRails = new THREE.Group();
-    const cb = new BoxBuilder();
     if (idx < LEVELS.length - 1) buildStairs(lv.z, sb, wb, stairRails, cb);
     g.add(stairRails);
     const colliders = new THREE.Mesh(cb.geometry(), invisibleMat);
