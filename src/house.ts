@@ -75,13 +75,13 @@ const SF_IN = STAIR_FRONT.y - STAIR_FRONT.t; // vnitřní líc
 // Schodišťová hala a otvor ve stropech
 export const STAIR = {
   x0: 860, x1: 1070,
-  backLanding: [770, 870] as [number, number], // podesta v úrovni podlaží
-  flight: [870, 1170] as [number, number], // ramena
-  midLanding: [1170, 1485] as [number, number], // mezipodesta (až k předsazené fasádě)
+  backLanding: [770, 975] as [number, number], // podesta v úrovni podlaží (před bytem)
+  flight: [975, 1275] as [number, number], // ramena
+  midLanding: [1275, 1485] as [number, number], // mezipodesta (až k předsazené fasádě)
   split: 965, // osa mezi rameny
   steps: 10,
 };
-export const STAIR_HOLE: [number, number, number, number] = [860, 870, 1070, 1355];
+export const STAIR_HOLE: [number, number, number, number] = [860, 975, 1070, 1355];
 
 // Střecha podle výkresu krovu: dvě valby vetknuté do sebe.
 //  - nižší valba nad zahradním křídlem (ložnice, x 0–350+, y 0–900), hřeben v y = 450
@@ -225,9 +225,9 @@ function flatWalls(level: 'P' | '1P'): Wall[] {
     { r: [45, 405, 575, 415] }, // ložnice | ložnice
     { r: [575, 45, 590, 770], o: [door(310, 390), door(600, 680)] }, // ložnice | jádro, předsíň
     { r: [590, 262, 785, 272], o: [door(630, 710)] }, // koupelna | chodbička
-    { r: [720, 272, 730, 486] }, // chodbička | spíž
+    // spíž u koupelny ve skutečnosti není – volný prostor
     { r: [785, 45, 795, 486] }, // koupelna, spíž | kuchyň
-    { r: [730, 476, 1070, 486], o: [door(850, 930)] }, // kuchyň | předsíň
+    { r: [785, 476, 1070, 486], o: [door(850, 930)] }, // kuchyň | předsíň
     { r: [960, 486, 970, 760], o: [door(530, 590), door(670, 750)] }, // předsíň | WC, komora
     { r: [970, 612, 1070, 622] }, // WC | šachta
     { r: [970, 655, 1070, 665] }, // šachta | komora
@@ -249,14 +249,13 @@ function flatRooms(level: 'P' | '1P'): Room[] {
     { name: 'Ložnice', r: [45, 415, 575, 760], floor: room },
     { name: '', r: [45, 760, 395, 855], floor: room },
     { name: 'Koupelna', r: [590, 45, 785, 262], floor: P ? 'brownTile' : 'terrazzo', wallTiles: P ? 200 : undefined },
-    { name: 'Spíž', r: [730, 272, 785, 476], floor: P ? 'wood' : 'linoleum' },
-    { name: '', r: [590, 272, 720, 486], floor: room },
+    { name: '', r: [590, 272, 785, 486], floor: room }, // volný prostor u koupelny (spíž není)
     { name: 'Kuchyň', r: [795, 45, 1070, 476], floor: P ? 'wood' : 'linoleum' },
     { name: 'Předsíň', r: [590, 486, 960, 760], floor: room },
     { name: 'WC', r: [970, 486, 1070, 612], floor: 'tile' },
     { name: 'Komora', r: [970, 665, 1070, 760], floor: room },
     { name: 'Obývací pokoj', r: [395, 770, 830, 1355], floor: room },
-    { name: 'Schodiště', r: [860, 770, 1070, 870], floor: 'terrazzo' },
+    { name: 'Schodiště', r: [860, 770, 1070, 975], floor: 'terrazzo' },
     { name: 'Balkon', r: BALCONY, floor: 'stone' },
   ];
 }
@@ -294,7 +293,7 @@ const basementRooms: Room[] = [
   { name: '', r: [700, 600, 1070, 680], floor: 'concrete' },
   { name: '', r: [610, 680, 1070, 760], floor: 'concrete' },
   { name: 'Garáž', r: GARAGE.room, floor: 'concrete', dz: GARAGE.floor },
-  { name: 'Schodiště', r: [860, 770, 1070, 870], floor: 'terrazzo' },
+  { name: 'Schodiště', r: [860, 770, 1070, 975], floor: 'terrazzo' },
 ];
 
 // ---------- Podkroví ----------
@@ -332,7 +331,7 @@ const atticRooms: Room[] = [
   { name: 'Půda', r: [45, 45, 625, 265], floor: 'concrete' },
   { name: 'Půda', r: [395, 830, 830, 1355], floor: 'concrete' },
   { name: 'Půda', r: [45, 815, 395, 855], floor: 'concrete' },
-  { name: 'Schodiště', r: [860, 770, 1070, 870], floor: 'terrazzo' },
+  { name: 'Schodiště', r: [860, 770, 1070, 975], floor: 'terrazzo' },
 ];
 
 export const LEVELS: Level[] = [

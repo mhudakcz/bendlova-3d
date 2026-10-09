@@ -3,6 +3,7 @@ import { OrbitControls } from 'three/examples/jsm/controls/OrbitControls.js';
 import { CSS2DRenderer } from 'three/examples/jsm/renderers/CSS2DRenderer.js';
 import { buildHouse, buildSurroundings, setClipping } from './build';
 import { buildSite } from './site';
+import { CURRENT_DRAWINGS } from './drawings';
 import { LEVELS, STREET_SPAWN, TERRAIN_Z } from './house';
 import './style.css';
 
@@ -162,7 +163,7 @@ bindRange('#cutZRange', 'cutZVal');
 $('#panelToggle').addEventListener('click', () => $('#panel').classList.toggle('hidden'));
 
 // ------------------------------------------------------------------ výkresy
-const PLANS = [
+const ORIGINAL = [
   ['suteren.jpg', 'Suterén 1:100'],
   ['prizemi.jpg', 'Přízemí 1:100'],
   ['1-patro.jpg', 'I. patro 1:100'],
@@ -173,17 +174,36 @@ const PLANS = [
   ['celkovy-pohled.jpg', 'Celkový průčelní pohled'],
   ['situace.jpg', 'Situace 1:1000'],
 ];
+// původní výkresy (1948) + současný stav vygenerovaný z modelu
+const PLANS: { name: string; src: () => string; group: string }[] = [
+  ...CURRENT_DRAWINGS().map((d) => ({
+    name: d.name.replace(' – současný stav', ''),
+    group: 'Současný stav',
+    src: () => 'data:image/svg+xml;charset=utf-8,' + encodeURIComponent(d.svg),
+  })),
+  ...ORIGINAL.map(([file, name]) => ({ name, group: 'Původní výkresy 1948', src: () => `${import.meta.env.BASE_URL}plans/${file}` })),
+];
 const planList = $('#planList');
+const planButtons: HTMLButtonElement[] = [];
 const showPlan = (i: number) => {
-  ($('#planImg') as HTMLImageElement).src = `${import.meta.env.BASE_URL}plans/${PLANS[i][0]}`;
-  $('#planCap').textContent = PLANS[i][1];
-  planList.querySelectorAll('button').forEach((b, k) => b.classList.toggle('on', k === i));
+  ($('#planImg') as HTMLImageElement).src = PLANS[i].src();
+  $('#planCap').textContent = `${PLANS[i].group} · ${PLANS[i].name}`;
+  planButtons.forEach((b, k) => b.classList.toggle('on', k === i));
 };
-PLANS.forEach(([, name], i) => {
+let lastGroup = '';
+PLANS.forEach((p, i) => {
+  if (p.group !== lastGroup) {
+    const h = document.createElement('div');
+    h.className = 'plan-group';
+    h.textContent = p.group;
+    planList.appendChild(h);
+    lastGroup = p.group;
+  }
   const b = document.createElement('button');
-  b.textContent = name;
+  b.textContent = p.name;
   b.onclick = () => showPlan(i);
   planList.appendChild(b);
+  planButtons.push(b);
 });
 $('#openPlans').addEventListener('click', () => {
   const map: Record<string, number> = { S: 0, P: 1, '1P': 2, A: 3 };
