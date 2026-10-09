@@ -34,6 +34,7 @@ const wallMat = track(new THREE.MeshStandardMaterial({ vertexColors: true, rough
 const capMat = track(new THREE.MeshBasicMaterial({ color: COL.cap, side: THREE.BackSide }));
 const slabMat = track(new THREE.MeshStandardMaterial({ color: '#cfc8bd', roughness: 0.95 }));
 let stairMat: THREE.MeshStandardMaterial; // teraco, vytvoří se po texturách
+const greenMat = track(new THREE.MeshStandardMaterial({ color: '#2f6b55', roughness: 0.6, metalness: 0.3 }));
 const pavedMat = track(new THREE.MeshStandardMaterial({ color: '#b3aea5', roughness: 0.95 })); // garáž, sjezd, balkon
 const railMat = track(new THREE.MeshStandardMaterial({ color: '#7d847c', roughness: 0.6, metalness: 0.3 }));
 const frameMat = track(new THREE.MeshStandardMaterial({ color: '#fbfbf8', roughness: 0.5 }));
@@ -420,7 +421,9 @@ export function buildHouse(scene: THREE.Scene) {
 
     // balkon ve výřezu
     const pb = new BoxBuilder(); // zpevněné plochy: balkon, garáž, sjezd
+    const gb = new BoxBuilder(); // zelené plechové prvky (stříška nad garáží)
     if (lv.id === 'P') pb.add(850, STAIR_FRONT.y, 1050, STAIR_FRONT.y + 50, 95, 108); // stříška nad vstupem
+    if (lv.id === 'S') gb.add(GARAGE.gate[0] - 30, 1400, STAIR_FRONT.x0, 1455, -42, -34); // zelená stříška nad vraty
     if (lv.id === 'P' || lv.id === '1P') pb.add(BALCONY[0], BALCONY[1], BALCONY[2], BALCONY[3], lv.z - 20, lv.z);
     // garáž: zvýšená podlaha + sjezd z ulice s opěrnými zídkami
     if (lv.id === 'S') {
@@ -442,6 +445,7 @@ export function buildHouse(scene: THREE.Scene) {
     addMesh(g, fb.geometry(), frameMat, false);
     const stairs = addMesh(g, sb.geometry(), stairMat);
     const paved = addMesh(g, pb.geometry(), pavedMat);
+    addMesh(g, gb.geometry(), greenMat);
     g.add(glass);
 
     // podlahy místností

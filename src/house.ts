@@ -39,8 +39,8 @@ export type FloorType =
 export const GARAGE = {
   room: [395, 805, 830, 1355] as [number, number, number, number],
   floor: 45, // podlaha garáže nad podlahou suterénu (cm) → −2,55 m
-  gate: [495, 735] as [number, number], // vrata v uliční zdi
-  ramp: [480, 1400, 750, 1760] as [number, number, number, number], // sjezd (x0, y0, x1, y1)
+  gate: [470, 805] as [number, number], // vrata v uliční zdi (čtyřkřídlá, skoro celá šířka)
+  ramp: [455, 1400, 810, 1760] as [number, number, number, number], // sjezd (x0, y0, x1, y1)
 };
 
 // Balkon v rohu výřezu: celá šířka výřezu (350 cm), hloubka 150 cm od zdi ložnice
@@ -63,14 +63,15 @@ export const FOOTPRINT: [number, number][] = [
 ];
 
 // Schodišťový pruh se vstupem je předsazený před uliční fasádu
-export const STAIR_FRONT = { x0: 830, y: 1425 };
+export const STAIR_FRONT = { x0: 830, y: 1530, t: 45 }; // y = líc předsazené fasády, t = tloušťka zdi
+const SF_IN = STAIR_FRONT.y - STAIR_FRONT.t; // vnitřní líc
 
 // Schodišťová hala a otvor ve stropech
 export const STAIR = {
   x0: 860, x1: 1070,
   backLanding: [770, 870] as [number, number], // podesta v úrovni podlaží
   flight: [870, 1170] as [number, number], // ramena
-  midLanding: [1170, 1355] as [number, number], // mezipodesta
+  midLanding: [1170, 1485] as [number, number], // mezipodesta (až k předsazené fasádě)
   split: 965, // osa mezi rameny
   steps: 10,
 };
@@ -123,7 +124,12 @@ export function roofFaces(): RoofFace[] {
     },
     { name: 'přední křídla', pts: [[-o, 900 + o], A, V, [350 - oh, 900 + o]], h: (_x, y) => E + S * (900 - y) },
     { name: 'valba hlavní', pts: [[350 - oh, 900 + o], [350 - oh, 1400 + o], [Mx, My], V], h: (x) => E + K * S * (x - 350) },
-    { name: 'uliční', pts: [[350 - oh, 1400 + o], [1100, 1400 + o], [1100, My], [Mx, My]], h: (_x, y) => E + S * (1400 - y) },
+    {
+      // nad předsazeným schodištěm je okap posunutý dopředu
+      name: 'uliční',
+      pts: [[350 - oh, 1400 + o], [STAIR_FRONT.x0 - o, 1400 + o], [STAIR_FRONT.x0 - o, STAIR_FRONT.y + o], [1100, STAIR_FRONT.y + o], [1100, My], [Mx, My]],
+      h: (_x, y) => E + S * (1400 - y),
+    },
   ];
 }
 
@@ -147,7 +153,7 @@ const SILL = { S: 155, P: 80, '1P': 115 } as const;
 // Zadávají se absolutně (cm vůči podlaze přízemí) a rozdělí se do zdí jednotlivých podlaží.
 const STAIR_WINDOWS: [number, number, number, number][] = [
   [870, 1005, 255, 415], // nad mezipodestou přízemí → 1. patro
-  [870, 1005, 590, 675], // nad mezipodestou 1. patro → podkroví
+  [870, 1005, 560, 630], // nad mezipodestou 1. patro → podkroví (pod střechou)
 ];
 export function stairWindowsFor(levelZ: number, height: number): Opening[] {
   return STAIR_WINDOWS.flatMap(([a, b, z0, z1]) => {
@@ -187,7 +193,7 @@ function outerWalls(level: 'S' | 'P' | '1P'): Wall[] {
     },
     // uliční fasáda – předsazený schodišťový pruh se vstupem
     {
-      r: [STAIR_FRONT.x0, 1355, 1100, STAIR_FRONT.y],
+      r: [STAIR_FRONT.x0, SF_IN, 1100, STAIR_FRONT.y],
       o: [
         ...(isS ? [door(880, 975, 150, 150)] : []), // vstupní dveře (spodní část)
         ...(level === 'P' ? [door(880, 975, 70, 0)] : []),
@@ -195,14 +201,14 @@ function outerWalls(level: 'S' | 'P' | '1P'): Wall[] {
       ],
     },
     // štítová zeď se sousedem (x = 1070–1100)
-    { r: [1070, 45, 1100, 1355] },
+    { r: [1070, 45, 1100, SF_IN] },
   ];
   return walls;
 }
 
 function stairHallWalls(): Wall[] {
   return [
-    { r: [830, 770, 860, 1355] }, // obývák | schodiště
+    { r: [830, 770, 860, SF_IN] }, // obývák | schodiště, bok předsazení
     { r: [860, 760, 1070, 770], o: [door(880, 960)] }, // předsíň | schodiště
   ];
 }
@@ -280,8 +286,8 @@ const atticWalls: Wall[] = [
   { r: [0, 855, 395, 900], h: BIG },
   { r: [350, 900, 395, 1400], h: BIG },
   { r: [395, 1355, STAIR_FRONT.x0, 1400], h: BIG },
-  { r: [STAIR_FRONT.x0, 1355, 1100, STAIR_FRONT.y], h: BIG, o: stairWindowsFor(600, BIG) },
-  { r: [1070, 45, 1100, 1355], h: BIG }, // štít
+  { r: [STAIR_FRONT.x0, SF_IN, 1100, STAIR_FRONT.y], h: BIG, o: stairWindowsFor(600, BIG) },
+  { r: [1070, 45, 1100, SF_IN], h: BIG }, // štít
   // pokoj
   { r: [45, 265, 640, 280], h: 260 },
   { r: [45, 800, 640, 815], h: 260 },
@@ -292,7 +298,7 @@ const atticWalls: Wall[] = [
   // předsíň
   { r: [860, 435, 875, 770], h: 260, o: [door(480, 560)] },
   { r: [640, 815, 830, 830], h: 260, o: [door(700, 780)] },
-  { r: [830, 770, 860, 1355], h: 260 },
+  { r: [830, 770, 860, SF_IN], h: BIG },
   // zábradlí kolem otvoru schodiště
   { r: [860, 1355 - 8, 1070, 1355], h: 100, kind: 'railing' },
 ];
