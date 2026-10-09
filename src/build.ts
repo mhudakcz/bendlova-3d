@@ -297,6 +297,7 @@ export type LevelObj = {
   labels: CSS2DObject[];
   walls: THREE.Mesh; // pro kolize
   rails: THREE.Mesh;
+  colliders: THREE.Mesh; // neviditelné zábrany (zrcadlo schodiště)
   floors: THREE.Object3D[]; // pro chůzi
 };
 
@@ -393,19 +394,45 @@ function footprintShape(holes: number[][] = [], polyHoles: [number, number][][] 
 }
 
 /** Schodiště z podlaží z do z+300 (dvouramenné, mezipodesta u ulice). */
-function buildStairs(z: number, sb: BoxBuilder, wb: BoxBuilder) {
+const stairRailMat = track(new THREE.MeshStandardMaterial({ color: '#a8322b', roughness: 0.5, metalness: 0.3 }));
+const invisibleMat = new THREE.MeshBasicMaterial({ visible: false });
+const GAP = 10; // polovina šířky zrcadla mezi rameny (cm)
+
+/** tyč mezi dvěma body (cm, půdorys x/y + výška z) */
+function bar(parent: THREE.Object3D, a: [number, number, number], b: [number, number, number], r: number) {
+  const A = new THREE.Vector3(M(a[0]), M(a[2]), M(a[1])), B = new THREE.Vector3(M(b[0]), M(b[2]), M(b[1]));
+  const len = A.distanceTo(B);
+  const m = new THREE.Mesh(new THREE.CylinderGeometry(M(r), M(r), len, 8), stairRailMat);
+  m.position.copy(A).add(B).multiplyScalar(0.5);
+  m.quaternion.setFromUnitVectors(new THREE.Vector3(0, 1, 0), B.clone().sub(A).normalize());
+  m.castShadow = true;
+  m.raycast = () => {};
+  parent.add(m);
+}
+
+function buildStairs(z: number, sb: BoxBuilder, wb: BoxBuilder, rails: THREE.Group, cb: BoxBuilder) {
   const { x0, x1, split, flight, midLanding } = STAIR;
   const n = 9, rise = 15, run = (flight[1] - flight[0]) / 10;
   for (let i = 0; i < n; i++) {
     const t = z + rise * (i + 1);
-    sb.add(split, flight[0] + run * i, x1, flight[0] + run * (i + 1), t - 30, t); // rameno A (k ulici)
+    sb.add(split + GAP, flight[0] + run * i, x1, flight[0] + run * (i + 1), t - 30, t); // rameno A (k ulici)
     const t2 = z + 150 + rise * (i + 1);
-    sb.add(x0, flight[1] - run * (i + 1), split, flight[1] - run * i, t2 - 30, t2); // rameno B (zpět)
+    sb.add(x0, flight[1] - run * (i + 1), split - GAP, flight[1] - run * i, t2 - 30, t2); // rameno B (zpět)
   }
+  // červené zábradlí podél zrcadla (volný prostor mezi rameny)
+  const H = 90;
+  const xa = split + GAP + 3, xb = split - GAP - 3;
+  const hA = (y: number) => z + (150 * (y - flight[0])) / (flight[1] - flight[0]);
+  const hB = (y: number) => z + 300 - (150 * (y - flight[0])) / (flight[1] - flight[0]);
+  for (const [x, h] of [[xa, hA], [xb, hB]] as [number, (y: number) => number][]) {
+    bar(rails, [x, flight[0], h(flight[0]) + H], [x, flight[1], h(flight[1]) + H], 2.5);
+    for (let y = flight[0] + 15; y < flight[1]; y += 30) bar(rails, [x, y, h(y)], [x, y, h(y) + H], 1);
+  }
+  // neviditelná zábrana (aby se při chůzi nepropadlo zrcadlem)
+  cb.add(split - GAP, flight[0], split + GAP, flight[1], z, z + 400, (_x, y) => Math.max(hA(y), hB(y)) + 100);
   // mezipodesta; u vstupu (suterén → přízemí) včetně prahu dveří v uliční zdi
   sb.add(x0, midLanding[0], x1, z < -150 ? STAIR_FRONT.y : midLanding[1], z + 130, z + 150);
-  // středová zídka mezi rameny
-  wb.add(split - 6, flight[0], split + 6, flight[1], z, z + 300);
+  void wb;
 }
 
 export function buildHouse(scene: THREE.Scene) {
@@ -487,7 +514,12 @@ export function buildHouse(scene: THREE.Scene) {
       wb.add(sx0, sy1, rx0, sy1 + 20, base - 30, TERRAIN_Z + 15); // opěrná zídka schodů
     }
     // schodiště nahoru z tohoto podlaží
-    if (idx < LEVELS.length - 1) buildStairs(lv.z, sb, wb);
+    const stairRails = new THREE.Group();
+    const cb = new BoxBuilder();
+    if (idx < LEVELS.length - 1) buildStairs(lv.z, sb, wb, stairRails, cb);
+    g.add(stairRails);
+    const colliders = new THREE.Mesh(cb.geometry(), invisibleMat);
+    g.add(colliders);
 
     const walls = addMesh(g, wb.geometry(), wallMat);
     const rails = addMesh(g, rb.geometry(), railMat);
@@ -526,7 +558,7 @@ export function buildHouse(scene: THREE.Scene) {
       }
     }
     house.add(g);
-    levels.push({ level: lv, group: g, labels, walls, rails, floors });
+    levels.push({ level: lv, group: g, labels, walls, rails, colliders, floors });
   });
 
   // ---------------------------------------------------------- střecha

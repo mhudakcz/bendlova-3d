@@ -199,7 +199,7 @@ const feet = new THREE.Vector3();
 let vy = 0;
 const keys = new Set<string>();
 const ray = new THREE.Raycaster();
-const wallTargets = [...levels.flatMap((l) => [l.walls, l.rails]), ...siteColliders];
+const wallTargets = [...levels.flatMap((l) => [l.walls, l.rails, l.colliders]), ...siteColliders];
 const floorTargets = [...levels.flatMap((l) => l.floors), ground, ...siteWalkables];
 
 function spawnAt(where: string) {
