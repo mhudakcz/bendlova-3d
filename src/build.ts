@@ -1,7 +1,7 @@
 import * as THREE from 'three';
 import { CSS2DObject } from 'three/examples/jsm/renderers/CSS2DRenderer.js';
 import {
-  BALCONY, FOOTPRINT, GARAGE, LEVELS, Level, ROOF, Room, STAIR, STAIR_HOLE, TERRAIN_Z, Wall, roofFaces, roofHeight, DORMER, dormerRoofZ,
+  BALCONY, FOOTPRINT, GARAGE, LEVELS, Level, ROOF, Room, STAIR, STAIR_FRONT, STAIR_HOLE, TERRAIN_Z, Wall, roofFaces, roofHeight, DORMER, dormerRoofZ,
 } from './house';
 import context from './context.json';
 
@@ -284,7 +284,7 @@ function onFacade(x: number, y: number) {
   return false;
 }
 const wallColor = (cx: number, cy: number, nx: number, ny: number) => {
-  if ((nx || ny) && onFacade(cx, cy)) return cx > 830 && ny > 0 ? COL.facadeStair : COL.facade;
+  if ((nx || ny) && onFacade(cx, cy)) return cx >= 829 && cy > 1399 ? COL.facadeStair : COL.facade;
   // vnější líce bočnic vikýře
   if (ny && cx < DORMER.depth && (Math.abs(cy - DORMER.y0) < 1 || Math.abs(cy - DORMER.y1) < 1)) return COL.facade;
   return COL.plaster;
@@ -382,7 +382,7 @@ function buildStairs(z: number, sb: BoxBuilder, wb: BoxBuilder) {
     sb.add(x0, flight[1] - run * (i + 1), split, flight[1] - run * i, t2 - 30, t2); // rameno B (zpět)
   }
   // mezipodesta; u vstupu (suterén → přízemí) včetně prahu dveří v uliční zdi
-  sb.add(x0, midLanding[0], x1, z < -150 ? 1400 : midLanding[1], z + 130, z + 150);
+  sb.add(x0, midLanding[0], x1, z < -150 ? STAIR_FRONT.y : midLanding[1], z + 130, z + 150);
   // středová zídka mezi rameny
   wb.add(split - 6, flight[0], split + 6, flight[1], z, z + 300);
 }
@@ -410,7 +410,7 @@ export function buildHouse(scene: THREE.Scene) {
     let slabShape: THREE.Shape;
     if (idx > 0) {
       const [hx0, hy0, hx1] = STAIR_HOLE;
-      const pts: [number, number][] = [[0, 0], [1100, 0], [1100, 1400], [hx1, 1400], [hx1, hy0], [hx0, hy0], [hx0, 1400], [350, 1400], [350, 900], [0, 900]];
+      const pts: [number, number][] = [[0, 0], [1100, 0], [1100, STAIR_FRONT.y], [hx1, STAIR_FRONT.y], [hx1, hy0], [hx0, hy0], [hx0, STAIR_FRONT.y], [STAIR_FRONT.x0, STAIR_FRONT.y], [STAIR_FRONT.x0, 1400], [350, 1400], [350, 900], [0, 900]];
       slabShape = new THREE.Shape(pts.map(([x, y]) => new THREE.Vector2(M(x), M(y))));
     } else slabShape = footprintShape(idx === 0 ? [] : [STAIR_HOLE]);
     const slabG = new THREE.ExtrudeGeometry(slabShape, { depth: 0.3, bevelEnabled: false });
@@ -420,7 +420,7 @@ export function buildHouse(scene: THREE.Scene) {
 
     // balkon ve výřezu
     const pb = new BoxBuilder(); // zpevněné plochy: balkon, garáž, sjezd
-    if (lv.id === 'P') pb.add(850, 1400, 1050, 1450, 95, 108); // stříška nad vstupem
+    if (lv.id === 'P') pb.add(850, STAIR_FRONT.y, 1050, STAIR_FRONT.y + 50, 95, 108); // stříška nad vstupem
     if (lv.id === 'P' || lv.id === '1P') pb.add(BALCONY[0], BALCONY[1], BALCONY[2], BALCONY[3], lv.z - 20, lv.z);
     // garáž: zvýšená podlaha + sjezd z ulice s opěrnými zídkami
     if (lv.id === 'S') {

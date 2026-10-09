@@ -59,8 +59,11 @@ export type Level = {
 
 // Půdorysný obrys (L-tvar, výřez pro balkony vlevo u ulice)
 export const FOOTPRINT: [number, number][] = [
-  [0, 0], [1100, 0], [1100, 1400], [350, 1400], [350, 900], [0, 900],
+  [0, 0], [1100, 0], [1100, 1425], [830, 1425], [830, 1400], [350, 1400], [350, 900], [0, 900],
 ];
+
+// Schodišťový pruh se vstupem je předsazený před uliční fasádu
+export const STAIR_FRONT = { x0: 830, y: 1425 };
 
 // Schodišťová hala a otvor ve stropech
 export const STAIR = {
@@ -175,13 +178,18 @@ function outerWalls(level: 'S' | 'P' | '1P'): Wall[] {
     },
     // levá stěna obýváku do výřezu (plná)
     { r: [350, 900, 395, 1400] },
-    // uliční fasáda
+    // uliční fasáda – obývák / garáž
     {
-      r: [395, 1355, 1100, 1400],
+      r: [395, 1355, STAIR_FRONT.x0, 1400],
+      o: isS
+        ? [door(GARAGE.gate[0], GARAGE.gate[1], 300 - GARAGE.floor - 40, GARAGE.floor)] // vrata garáže
+        : [fw(495, 720)],
+    },
+    // uliční fasáda – předsazený schodišťový pruh se vstupem
+    {
+      r: [STAIR_FRONT.x0, 1355, 1100, STAIR_FRONT.y],
       o: [
-        ...(isS
-          ? [door(GARAGE.gate[0], GARAGE.gate[1], 300 - GARAGE.floor - 40, GARAGE.floor), door(880, 975, 150, 150)] // vrata garáže, vstupní dveře (spodní část)
-          : [fw(495, 720)]),
+        ...(isS ? [door(880, 975, 150, 150)] : []), // vstupní dveře (spodní část)
         ...(level === 'P' ? [door(880, 975, 70, 0)] : []),
         ...stairWindowsFor(levelZ, 300),
       ],
@@ -271,7 +279,8 @@ const atticWalls: Wall[] = [
   { r: [0, DORMER.y1 - 15, DORMER.depth, DORMER.y1], h: BIG },
   { r: [0, 855, 395, 900], h: BIG },
   { r: [350, 900, 395, 1400], h: BIG },
-  { r: [395, 1355, 1100, 1400], h: BIG, o: stairWindowsFor(600, BIG) },
+  { r: [395, 1355, STAIR_FRONT.x0, 1400], h: BIG },
+  { r: [STAIR_FRONT.x0, 1355, 1100, STAIR_FRONT.y], h: BIG, o: stairWindowsFor(600, BIG) },
   { r: [1070, 45, 1100, 1355], h: BIG }, // štít
   // pokoj
   { r: [45, 265, 640, 280], h: 260 },
