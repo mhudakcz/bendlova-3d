@@ -1,0 +1,490 @@
+import * as THREE from 'three';
+import { CSS2DObject } from 'three/examples/jsm/renderers/CSS2DRenderer.js';
+import {
+  FOOTPRINT, LEVELS, Level, ROOF, STAIR, STAIR_HOLE, TERRAIN_Z, Wall, roofHeight,
+} from './house';
+import context from './context.json';
+
+const M = (v: number) => v / 100; // cm -> m
+type TopFn = ((x: number, y: number) => number) | null;
+
+// ---------------------------------------------------------------- materiály
+export const clipPlanes: THREE.Plane[] = [];
+const clipped: THREE.Material[] = [];
+function track<T extends THREE.Material>(m: T): T {
+  clipped.push(m);
+  return m;
+}
+export function setClipping(planes: THREE.Plane[]) {
+  for (const m of clipped) {
+    m.clippingPlanes = planes.length ? planes : null;
+    m.clipShadows = true;
+    m.needsUpdate = true;
+  }
+}
+
+const COL = {
+  facade: new THREE.Color('#dcc59b'),
+  facadeStair: new THREE.Color('#eeeae0'),
+  plaster: new THREE.Color('#f3f0ea'),
+  cap: '#d98c64',
+};
+
+const wallMat = track(new THREE.MeshStandardMaterial({ vertexColors: true, roughness: 0.92 }));
+const capMat = track(new THREE.MeshBasicMaterial({ color: COL.cap, side: THREE.BackSide }));
+const slabMat = track(new THREE.MeshStandardMaterial({ color: '#cfc8bd', roughness: 0.95 }));
+const stairMat = track(new THREE.MeshStandardMaterial({ color: '#b9b2a6', roughness: 0.8 }));
+const railMat = track(new THREE.MeshStandardMaterial({ color: '#7d847c', roughness: 0.6, metalness: 0.3 }));
+const frameMat = track(new THREE.MeshStandardMaterial({ color: '#fbfbf8', roughness: 0.5 }));
+const glassMat = track(
+  new THREE.MeshPhysicalMaterial({
+    color: '#bcd6e6', transparent: true, opacity: 0.28, roughness: 0.05, metalness: 0.1,
+    side: THREE.DoubleSide, depthWrite: false,
+  }),
+);
+const roofMat = track(new THREE.MeshStandardMaterial({ color: '#5b4b44', roughness: 0.85, shadowSide: THREE.DoubleSide }));
+const soffitMat = track(new THREE.MeshStandardMaterial({ color: '#c9b394', roughness: 0.9, side: THREE.BackSide }));
+const chimneyMat = track(new THREE.MeshStandardMaterial({ color: '#d8c7a6', roughness: 0.9 }));
+
+function canvasTex(draw: (g: CanvasRenderingContext2D, s: number) => void, size = 256) {
+  const c = document.createElement('canvas');
+  c.width = c.height = size;
+  draw(c.getContext('2d')!, size);
+  const t = new THREE.CanvasTexture(c);
+  t.wrapS = t.wrapT = THREE.RepeatWrapping;
+  t.colorSpace = THREE.SRGBColorSpace;
+  t.anisotropy = 8;
+  return t;
+}
+function noise(g: CanvasRenderingContext2D, s: number, a: number) {
+  const img = g.getImageData(0, 0, s, s);
+  for (let i = 0; i < img.data.length; i += 4) {
+    const n = (Math.random() - 0.5) * a;
+    img.data[i] += n; img.data[i + 1] += n; img.data[i + 2] += n;
+  }
+  g.putImageData(img, 0, 0);
+}
+const floorTex = {
+  wood: canvasTex((g, s) => {
+    const rows = 8;
+    for (let r = 0; r < rows; r++) {
+      const off = (r % 2) * s * 0.5 + r * 37;
+      for (let k = -1; k < 2; k++) {
+        const l = 120 + Math.random() * 40;
+        g.fillStyle = `hsl(${28 + Math.random() * 6},${42 + Math.random() * 10}%,${l / 3.2}%)`;
+        g.fillRect((off + k * s) % (2 * s) - s * 0.5, (r * s) / rows, s, s / rows);
+      }
+      g.fillStyle = 'rgba(40,20,10,.35)';
+      g.fillRect(0, (r * s) / rows, s, 1.5);
+    }
+    noise(g, s, 18);
+  }),
+  tile: canvasTex((g, s) => {
+    g.fillStyle = '#e9e6df'; g.fillRect(0, 0, s, s);
+    g.strokeStyle = '#b8b2a8'; g.lineWidth = 2;
+    for (let i = 0; i <= 4; i++) {
+      g.beginPath(); g.moveTo((i * s) / 4, 0); g.lineTo((i * s) / 4, s); g.stroke();
+      g.beginPath(); g.moveTo(0, (i * s) / 4); g.lineTo(s, (i * s) / 4); g.stroke();
+    }
+    noise(g, s, 8);
+  }),
+  stone: canvasTex((g, s) => {
+    g.fillStyle = '#b7aa98'; g.fillRect(0, 0, s, s);
+    for (let i = 0; i < 2; i++) for (let j = 0; j < 2; j++) {
+      g.fillStyle = (i + j) % 2 ? '#a8836a' : '#cbbfae';
+      g.fillRect((i * s) / 2 + 2, (j * s) / 2 + 2, s / 2 - 4, s / 2 - 4);
+    }
+    noise(g, s, 14);
+  }),
+  concrete: canvasTex((g, s) => {
+    g.fillStyle = '#a9a69f'; g.fillRect(0, 0, s, s);
+    noise(g, s, 30);
+  }),
+};
+const floorMats = Object.fromEntries(
+  Object.entries(floorTex).map(([k, t]) => [k, track(new THREE.MeshStandardMaterial({ map: t, roughness: 0.75 }))]),
+) as Record<keyof typeof floorTex, THREE.MeshStandardMaterial>;
+const floorRepeat = { wood: 1.6, tile: 1.2, stone: 0.8, concrete: 0.4 };
+
+// ---------------------------------------------------------------- geometrie
+/** Kvádr v cm (půdorysné x,y; výška z). Vrchní plocha může být oříznuta funkcí top (např. střechou). */
+class BoxBuilder {
+  pos: number[] = [];
+  col: number[] = [];
+  constructor(private colorFn?: (cx: number, cy: number, nx: number, ny: number) => THREE.Color) {}
+
+  add(x0: number, y0: number, x1: number, y1: number, zb: number, zt: number, top: TopFn = null) {
+    if (x1 - x0 < 0.01 || y1 - y0 < 0.01 || zt - zb < 0.01) return;
+    if (top) {
+      // rozdělit po délce, aby oříznutí kopírovalo střechu
+      const alongX = x1 - x0 >= y1 - y0;
+      const L = alongX ? x1 - x0 : y1 - y0;
+      const n = Math.max(1, Math.ceil(L / 30));
+      if (n > 1) {
+        for (let i = 0; i < n; i++) {
+          const a = i / n, b = (i + 1) / n;
+          if (alongX) this.quadBox(x0 + (x1 - x0) * a, y0, x0 + (x1 - x0) * b, y1, zb, zt, top);
+          else this.quadBox(x0, y0 + (y1 - y0) * a, x1, y0 + (y1 - y0) * b, zb, zt, top);
+        }
+        return;
+      }
+    }
+    this.quadBox(x0, y0, x1, y1, zb, zt, top);
+  }
+
+  private quadBox(x0: number, y0: number, x1: number, y1: number, zb: number, zt: number, top: TopFn) {
+    const t = (x: number, y: number) => Math.max(zb + 1, top ? Math.min(zt, top(x, y)) : zt);
+    // rohy (půdorys): 0=(x0,y0) 1=(x1,y0) 2=(x1,y1) 3=(x0,y1)
+    const c = [[x0, y0], [x1, y0], [x1, y1], [x0, y1]];
+    const B = c.map(([x, y]) => [M(x), M(zb), M(y)]);
+    const T = c.map(([x, y]) => [M(x), M(t(x, y)), M(y)]);
+    const quad = (a: number[], b: number[], cc: number[], d: number[], nx: number, ny: number) => {
+      const color = this.colorFn
+        ? this.colorFn((a[0] + cc[0]) * 50, (a[2] + cc[2]) * 50, nx, ny)
+        : COL.plaster;
+      for (const v of [a, b, cc, a, cc, d]) {
+        this.pos.push(v[0], v[1], v[2]);
+        this.col.push(color.r, color.g, color.b);
+      }
+    };
+    // vrch, spodek (CCW při pohledu zvenku)
+    quad(T[0], T[3], T[2], T[1], 0, 0);
+    quad(B[0], B[1], B[2], B[3], 0, 0);
+    // boky
+    quad(B[0], T[0], T[1], B[1], 0, -1); // y0 strana
+    quad(B[1], T[1], T[2], B[2], 1, 0); // x1
+    quad(B[2], T[2], T[3], B[3], 0, 1); // y1
+    quad(B[3], T[3], T[0], B[0], -1, 0); // x0
+  }
+
+  geometry() {
+    const g = new THREE.BufferGeometry();
+    g.setAttribute('position', new THREE.Float32BufferAttribute(this.pos, 3));
+    g.setAttribute('color', new THREE.Float32BufferAttribute(this.col, 3));
+    g.computeVertexNormals();
+    return g;
+  }
+}
+
+/** Leží bod na obvodu domu? (pro barvu fasády) */
+function onFacade(x: number, y: number) {
+  for (let i = 0; i < FOOTPRINT.length; i++) {
+    const [ax, ay] = FOOTPRINT[i];
+    const [bx, by] = FOOTPRINT[(i + 1) % FOOTPRINT.length];
+    if (ax === 1100 && bx === 1100) continue; // štít se sousedem
+    if (ax === bx && Math.abs(x - ax) < 1 && y >= Math.min(ay, by) - 1 && y <= Math.max(ay, by) + 1) return true;
+    if (ay === by && Math.abs(y - ay) < 1 && x >= Math.min(ax, bx) - 1 && x <= Math.max(ax, bx) + 1) return true;
+  }
+  return false;
+}
+const wallColor = (cx: number, cy: number, nx: number, ny: number) => {
+  if ((nx || ny) && onFacade(cx, cy)) return cx > 830 && ny > 0 ? COL.facadeStair : COL.facade;
+  return COL.plaster;
+};
+
+export type LevelObj = {
+  level: Level;
+  group: THREE.Group;
+  labels: CSS2DObject[];
+  walls: THREE.Mesh; // pro kolize
+  rails: THREE.Mesh;
+  floors: THREE.Object3D[]; // pro chůzi
+};
+
+function addMesh(parent: THREE.Object3D, g: THREE.BufferGeometry, m: THREE.Material, withCap = true) {
+  const mesh = new THREE.Mesh(g, m);
+  mesh.castShadow = true;
+  mesh.receiveShadow = true;
+  parent.add(mesh);
+  if (withCap) {
+    const cap = new THREE.Mesh(g, capMat);
+    cap.raycast = () => {};
+    parent.add(cap);
+  }
+  return mesh;
+}
+
+function buildWall(w: Wall, lv: Level, wb: BoxBuilder, rb: BoxBuilder, fb: BoxBuilder, glass: THREE.Group, top: TopFn) {
+  const [x0, y0, x1, y1] = w.r;
+  const zb = lv.z;
+  const H = w.h ?? lv.height;
+  const zt = zb + H;
+  const target = w.kind === 'railing' ? rb : wb;
+  const alongX = x1 - x0 >= y1 - y0;
+  const [s0, s1] = alongX ? [x0, x1] : [y0, y1];
+  const piece = (a: number, b: number, za: number, zb2: number) => {
+    if (alongX) target.add(a, y0, b, y1, za, zb2, top);
+    else target.add(x0, a, x1, b, za, zb2, top);
+  };
+  const ops = [...(w.o ?? [])].sort((p, q) => p.a - q.a);
+  let cur = s0;
+  for (const o of ops) {
+    piece(cur, o.a, zb, zt);
+    if (o.sill > 0) piece(o.a, o.b, zb, zb + o.sill);
+    if (o.sill + o.h < H) piece(o.a, o.b, zb + o.sill + o.h, zt);
+    cur = o.b;
+    if (o.kind === 'window') {
+      // rám + sklo uprostřed tloušťky zdi
+      const f = 5;
+      const zs = zb + o.sill, ze = zb + o.sill + o.h;
+      const mid = alongX ? (y0 + y1) / 2 : (x0 + x1) / 2;
+      const fr = (a: number, b: number, za: number, zz: number) =>
+        alongX ? fb.add(a, mid - 4, b, mid + 4, za, zz) : fb.add(mid - 4, a, mid + 4, b, za, zz);
+      fr(o.a, o.b, zs, zs + f);
+      fr(o.a, o.b, ze - f, ze);
+      fr(o.a, o.a + f, zs, ze);
+      fr(o.b - f, o.b, zs, ze);
+      fr((o.a + o.b) / 2 - 2.5, (o.a + o.b) / 2 + 2.5, zs, ze);
+      const pg = new THREE.PlaneGeometry(M(o.b - o.a), M(o.h));
+      const pm = new THREE.Mesh(pg, glassMat);
+      pm.position.set(alongX ? M((o.a + o.b) / 2) : M(mid), M((zs + ze) / 2), alongX ? M(mid) : M((o.a + o.b) / 2));
+      if (!alongX) pm.rotation.y = Math.PI / 2;
+      pm.raycast = () => {};
+      glass.add(pm);
+    }
+  }
+  piece(cur, s1, zb, zt);
+}
+
+function footprintShape(holes: number[][] = []) {
+  const s = new THREE.Shape(FOOTPRINT.map(([x, y]) => new THREE.Vector2(M(x), M(y))));
+  for (const [x0, y0, x1, y1] of holes) {
+    s.holes.push(new THREE.Path([
+      new THREE.Vector2(M(x0), M(y0)), new THREE.Vector2(M(x0), M(y1)),
+      new THREE.Vector2(M(x1), M(y1)), new THREE.Vector2(M(x1), M(y0)),
+    ]));
+  }
+  return s;
+}
+
+/** Schodiště z podlaží z do z+300 (dvouramenné, mezipodesta u ulice). */
+function buildStairs(z: number, sb: BoxBuilder, rb: BoxBuilder) {
+  const { x0, x1, split, flight, midLanding } = STAIR;
+  const n = 9, rise = 15, run = (flight[1] - flight[0]) / 10;
+  for (let i = 0; i < n; i++) {
+    const t = z + rise * (i + 1);
+    sb.add(split, flight[0] + run * i, x1, flight[0] + run * (i + 1), t - 30, t); // rameno A (k ulici)
+    const t2 = z + 150 + rise * (i + 1);
+    sb.add(x0, flight[1] - run * (i + 1), split, flight[1] - run * i, t2 - 30, t2); // rameno B (zpět)
+  }
+  sb.add(x0, midLanding[0], x1, 1400, z + 130, z + 150); // mezipodesta (vč. prahu vstupních dveří)
+  // zábradlí mezi rameny
+  const top = (_x: number, y: number) => {
+    const k = (y - flight[0]) / (flight[1] - flight[0]);
+    return Math.max(z + 150 * k, z + 300 - 150 * k) + 100;
+  };
+  rb.add(split - 3, flight[0], split + 3, flight[1], z, z + 400, top);
+}
+
+export function buildHouse(scene: THREE.Scene) {
+  const house = new THREE.Group();
+  house.name = 'house';
+  scene.add(house);
+  const levels: LevelObj[] = [];
+
+  LEVELS.forEach((lv, idx) => {
+    const g = new THREE.Group();
+    g.name = lv.id;
+    const isAttic = lv.id === 'A';
+    const top: TopFn = isAttic ? (x, y) => roofHeight(x, y) - 2 : null;
+    const wb = new BoxBuilder(wallColor);
+    const rb = new BoxBuilder();
+    const fb = new BoxBuilder();
+    const sb = new BoxBuilder();
+    const glass = new THREE.Group();
+    for (const w of lv.walls) buildWall(w, lv, wb, rb, fb, glass, top);
+
+    // strop/podlahová deska
+    const hole = idx === 0 ? [] : [STAIR_HOLE];
+    const slabG = new THREE.ExtrudeGeometry(footprintShape(hole), { depth: 0.3, bevelEnabled: false });
+    slabG.rotateX(Math.PI / 2);
+    slabG.translate(0, M(lv.z), 0);
+    const slab = addMesh(g, slabG, slabMat);
+
+    // balkon ve výřezu
+    if (lv.id === 'P' || lv.id === '1P') sb.add(0, 900, 350, 1360, lv.z - 20, lv.z);
+    // schodiště nahoru z tohoto podlaží
+    if (idx < LEVELS.length - 1) buildStairs(lv.z, sb, rb);
+
+    const walls = addMesh(g, wb.geometry(), wallMat);
+    const rails = addMesh(g, rb.geometry(), railMat);
+    addMesh(g, fb.geometry(), frameMat, false);
+    const stairs = addMesh(g, sb.geometry(), stairMat);
+    g.add(glass);
+
+    // podlahy místností
+    const floors: THREE.Object3D[] = [slab, stairs];
+    const labels: CSS2DObject[] = [];
+    for (const r of lv.rooms) {
+      const [x0, y0, x1, y1] = r.r;
+      const w = M(x1 - x0), d = M(y1 - y0);
+      const pg = new THREE.PlaneGeometry(w, d);
+      const rep = floorRepeat[r.floor];
+      const uv = pg.attributes.uv as THREE.BufferAttribute;
+      for (let i = 0; i < uv.count; i++) uv.setXY(i, uv.getX(i) * w * rep, uv.getY(i) * d * rep);
+      const fm = new THREE.Mesh(pg, floorMats[r.floor]);
+      fm.rotation.x = -Math.PI / 2;
+      fm.position.set(M((x0 + x1) / 2), M(lv.z) + 0.004, M((y0 + y1) / 2));
+      fm.receiveShadow = true;
+      g.add(fm);
+      floors.push(fm);
+      if (r.name && r.name !== 'Schodiště') {
+        const el = document.createElement('div');
+        el.className = 'room-label';
+        el.innerHTML = `<b>${r.name}</b><span>${(((x1 - x0) * (y1 - y0)) / 1e4).toFixed(1)} m²</span>`;
+        const lab = new CSS2DObject(el);
+        lab.position.set(M((x0 + x1) / 2), M(lv.z) + 0.3, M((y0 + y1) / 2));
+        lab.visible = false;
+        g.add(lab);
+        labels.push(lab);
+      }
+    }
+    house.add(g);
+    levels.push({ level: lv, group: g, labels, walls, rails, floors });
+  });
+
+  // ---------------------------------------------------------- střecha
+  const roof = new THREE.Group();
+  roof.name = 'roof';
+  const o = ROOF.overhang;
+  const S = ROOF.rise / ROOF.ridgeY;
+  const P = (x: number, y: number, z: number) => new THREE.Vector3(M(x), M(z), M(y));
+  const eo = ROOF.eave - o * S; // výška okraje přesahu
+  const R = ROOF.eave + ROOF.rise;
+  const tri: THREE.Vector3[] = [];
+  const quad = (a: THREE.Vector3, b: THREE.Vector3, c: THREE.Vector3, d: THREE.Vector3) => tri.push(a, b, c, a, c, d);
+  // zadní plocha
+  quad(P(-o, -o, eo), P(1100, -o, eo), P(1100, 700, R), P(700, 700, R));
+  // přední (uliční) plocha
+  quad(P(-o, 1400 + o, eo), P(700, 700, R), P(1100, 700, R), P(1100, 1400 + o, eo));
+  // valba k x=0
+  tri.push(P(-o, -o, eo), P(700, 700, R), P(-o, 1400 + o, eo));
+  for (let i = 0; i < tri.length; i += 3) [tri[i + 1], tri[i + 2]] = [tri[i + 2], tri[i + 1]]; // normály vzhůru
+  const rg = new THREE.BufferGeometry().setFromPoints(tri);
+  rg.computeVertexNormals();
+  const roofMesh = new THREE.Mesh(rg, roofMat);
+  roofMesh.castShadow = roofMesh.receiveShadow = true;
+  roof.add(roofMesh);
+  const soffit = new THREE.Mesh(rg, soffitMat); // podhled / krokve zespodu
+  soffit.receiveShadow = true;
+  soffit.raycast = () => {};
+  roof.add(soffit);
+  // tašky – jemné linky
+  const lines: THREE.Vector3[] = [];
+  for (let k = 0; k < 14; k++) {
+    const h = eo + ((R - eo) * k) / 14;
+    const d = (h - ROOF.eave) / S; // vzdálenost od líce zdi (záporná = přesah)
+    lines.push(P(d, d, h + 1), P(1100, d, h + 1));
+    lines.push(P(d, 1400 - d, h + 1), P(1100, 1400 - d, h + 1));
+    lines.push(P(d, d, h + 1), P(d, 1400 - d, h + 1));
+  }
+  const ll = new THREE.LineSegments(
+    new THREE.BufferGeometry().setFromPoints(lines),
+    track(new THREE.LineBasicMaterial({ color: '#3f332e', transparent: true, opacity: 0.5 })),
+  );
+  roof.add(ll);
+  const cb = new BoxBuilder(() => new THREE.Color('#d8c7a6'));
+  for (const [x0, y0, x1, y1] of [[560, 770, 650, 805], [920, 610, 1010, 665], [690, 440, 745, 480]]) {
+    cb.add(x0, y0, x1, y1, 600, R + 90);
+  }
+  addMesh(roof, cb.geometry(), chimneyMat).material = track(new THREE.MeshStandardMaterial({ vertexColors: true, roughness: 0.9 }));
+  house.add(roof);
+
+  return { house, levels, roof };
+}
+
+// ---------------------------------------------------------------- okolí (OpenStreetMap)
+type Ctx = {
+  buildings: { levels: number; roof: string; type: string; pts: [number, number][] }[];
+  roads: { kind: string; name: string; pts: [number, number][] }[];
+};
+
+export function buildSurroundings(scene: THREE.Scene) {
+  const ctx = context as unknown as Ctx;
+  const group = new THREE.Group();
+  group.name = 'context';
+
+  // terén s otvorem pro dům
+  const size = 260;
+  const ground = new THREE.Shape([
+    new THREE.Vector2(-size, -size), new THREE.Vector2(size, -size),
+    new THREE.Vector2(size, size), new THREE.Vector2(-size, size),
+  ]);
+  ground.holes.push(new THREE.Path(FOOTPRINT.map(([x, y]) => new THREE.Vector2(M(x), M(y))).reverse()));
+  const gg = new THREE.ShapeGeometry(ground);
+  gg.rotateX(Math.PI / 2);
+  const groundMat = new THREE.MeshStandardMaterial({
+    map: canvasTex((g, s) => {
+      g.fillStyle = '#8fa070'; g.fillRect(0, 0, s, s);
+      noise(g, s, 26);
+    }),
+    roughness: 1,
+  });
+  const uv = gg.attributes.position;
+  const uvs: number[] = [];
+  for (let i = 0; i < uv.count; i++) uvs.push(uv.getX(i) / 4, uv.getZ(i) / 4);
+  gg.setAttribute('uv', new THREE.Float32BufferAttribute(uvs, 2));
+  const groundMesh = new THREE.Mesh(gg, groundMat);
+  groundMesh.material.side = THREE.DoubleSide;
+  groundMesh.position.y = M(TERRAIN_Z);
+  groundMesh.receiveShadow = true;
+  scene.add(groundMesh);
+
+  // silnice a chodníky
+  const roadMat = new THREE.MeshStandardMaterial({ color: '#7d7b78', roughness: 1 });
+  const walkMat = new THREE.MeshStandardMaterial({ color: '#b6aea2', roughness: 1 });
+  for (const r of ctx.roads) {
+    const w = r.kind === 'footway' || r.kind === 'pedestrian' ? 1.8 : 6;
+    const pos: number[] = [];
+    for (let i = 0; i < r.pts.length - 1; i++) {
+      const [ax, ay] = r.pts[i], [bx, by] = r.pts[i + 1];
+      const dx = bx - ax, dy = by - ay, L = Math.hypot(dx, dy) || 1;
+      const nx = (-dy / L) * w / 2, ny = (dx / L) * w / 2;
+      const a1 = [ax + nx, ay + ny], a2 = [ax - nx, ay - ny], b1 = [bx + nx, by + ny], b2 = [bx - nx, by - ny];
+      for (const p of [a1, b1, b2, a1, b2, a2]) pos.push(p[0], 0, p[1]);
+    }
+    const g = new THREE.BufferGeometry();
+    g.setAttribute('position', new THREE.Float32BufferAttribute(pos, 3));
+    g.computeVertexNormals();
+    const m = new THREE.Mesh(g, w > 3 ? roadMat : walkMat);
+    m.material.side = THREE.DoubleSide;
+    m.position.y = M(TERRAIN_Z) + (w > 3 ? 0.02 : 0.015);
+    m.receiveShadow = true;
+    group.add(m);
+  }
+
+  // okolní budovy
+  const bMat = new THREE.MeshStandardMaterial({ color: '#e4ddd0', roughness: 0.95 });
+  const rMat = new THREE.MeshStandardMaterial({ color: '#9b5a45', roughness: 0.9, side: THREE.DoubleSide });
+  for (const b of ctx.buildings) {
+    if (b.pts.length < 4) continue;
+    const pts = b.pts.slice(0, -1);
+    const shape = new THREE.Shape(pts.map(([x, y]) => new THREE.Vector2(x, y)));
+    const h = b.type === 'garage' ? 2.6 : Math.max(1, b.levels) * 3.1;
+    const eg = new THREE.ExtrudeGeometry(shape, { depth: h, bevelEnabled: false });
+    eg.rotateX(Math.PI / 2);
+    const mesh = new THREE.Mesh(eg, bMat);
+    mesh.position.y = M(TERRAIN_Z) + h;
+    mesh.castShadow = mesh.receiveShadow = true;
+    group.add(mesh);
+    // jednoduchá šikmá střecha – jehlan nad těžištěm
+    if (b.roof !== 'flat' && b.type !== 'garage') {
+      const cx = pts.reduce((s, p) => s + p[0], 0) / pts.length;
+      const cy = pts.reduce((s, p) => s + p[1], 0) / pts.length;
+      const tri: THREE.Vector3[] = [];
+      const top = new THREE.Vector3(cx, h + 3.2, cy);
+      for (let i = 0; i < pts.length; i++) {
+        const a = pts[i], c = pts[(i + 1) % pts.length];
+        tri.push(new THREE.Vector3(a[0], h, a[1]), top, new THREE.Vector3(c[0], h, c[1]));
+      }
+      const rg = new THREE.BufferGeometry().setFromPoints(tri);
+      rg.computeVertexNormals();
+      const rm = new THREE.Mesh(rg, rMat);
+      rm.position.y = M(TERRAIN_Z);
+      rm.castShadow = true;
+      group.add(rm);
+    }
+  }
+  scene.add(group);
+  return { context: group, ground: groundMesh };
+}

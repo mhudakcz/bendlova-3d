@@ -1,0 +1,121 @@
+<!doctype html>
+<html lang="cs">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>Bendlova 16A · 3D</title>
+    <link rel="preconnect" href="https://fonts.googleapis.com" />
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
+    <link
+      href="https://fonts.googleapis.com/css2?family=IBM+Plex+Mono:wght@400;500&family=Fraunces:opsz,wght@9..144,500;9..144,700&family=IBM+Plex+Sans:wght@400;500;600&display=swap"
+      rel="stylesheet"
+    />
+  </head>
+  <body>
+    <div id="app"></div>
+
+    <aside id="panel">
+      <header>
+        <div class="eyebrow">Rodinný dům · Brno-Husovice · 1948</div>
+        <h1>Bendlova <em>16A</em></h1>
+      </header>
+
+      <section>
+        <div class="seg" id="mode">
+          <button data-mode="orbit" class="on">3D model</button>
+          <button data-mode="walk">Procházet</button>
+        </div>
+      </section>
+
+      <section>
+        <h2>Podlaží</h2>
+        <div class="floors" id="floors">
+          <button data-floor="all" class="on"><span>Celý dům</span><i>+12,1 m</i></button>
+          <button data-floor="A"><span>Podkroví</span><i>+6,00</i></button>
+          <button data-floor="1P"><span>1. patro</span><i>+3,00</i></button>
+          <button data-floor="P"><span>Přízemí</span><i>±0,00</i></button>
+          <button data-floor="S"><span>Suterén</span><i>−3,00</i></button>
+        </div>
+      </section>
+
+      <section id="cuts">
+        <h2>Řezy</h2>
+        <label class="row">
+          <input type="checkbox" id="cutH" checked />
+          <span>Vodorovný řez</span>
+          <output id="cutHVal">1,40 m</output>
+        </label>
+        <input type="range" id="cutHRange" min="0.2" max="3" step="0.05" value="1.4" />
+        <label class="row">
+          <input type="checkbox" id="cutX" />
+          <span>Svislý řez podélný</span>
+          <output id="cutXVal">5,5 m</output>
+        </label>
+        <input type="range" id="cutXRange" min="0" max="11" step="0.05" value="5.5" />
+        <label class="row">
+          <input type="checkbox" id="cutZ" />
+          <span>Svislý řez příčný</span>
+          <output id="cutZVal">10,0 m</output>
+        </label>
+        <input type="range" id="cutZRange" min="0" max="14" step="0.05" value="10" />
+        <p class="hint">Vodorovný řez platí pro vybrané podlaží – výška nad podlahou.</p>
+      </section>
+
+      <section>
+        <h2>Zobrazení</h2>
+        <label class="row"><input type="checkbox" id="showRoof" checked /><span>Střecha</span></label>
+        <label class="row"><input type="checkbox" id="showCtx" checked /><span>Okolí (OpenStreetMap)</span></label>
+        <label class="row"><input type="checkbox" id="showLabels" checked /><span>Názvy místností</span></label>
+      </section>
+
+      <section>
+        <button class="wide" id="openPlans">Původní výkresy</button>
+      </section>
+      <footer>Arch. Oldřich Blažek · data © OpenStreetMap</footer>
+    </aside>
+
+    <button id="panelToggle" aria-label="Panel">☰</button>
+
+    <!-- Procházení -->
+    <div id="walkHud" hidden>
+      <canvas id="minimap" width="220" height="280"></canvas>
+      <div class="whereami" id="whereami">Přízemí</div>
+      <div class="keys">
+        <span><kbd>↑</kbd><kbd>↓</kbd> / <kbd>W</kbd><kbd>S</kbd> chůze · <kbd>←</kbd><kbd>→</kbd> otáčení</span>
+        <span><kbd>A</kbd><kbd>D</kbd> úkrok · tažení myší rozhlížení</span>
+        <span><kbd>Shift</kbd> rychleji</span>
+        <span><kbd>1</kbd>–<kbd>4</kbd> skok do patra · <kbd>0</kbd> ulice</span>
+        <span><kbd>Esc</kbd> pauza</span>
+      </div>
+    </div>
+    <div id="crosshair" hidden></div>
+    <div id="walkPause" hidden>
+      <div class="card">
+        <h3>Procházka domem</h3>
+        <p>Choď šipkami ↑ ↓ (nebo W S), otáčej se ← → a rozhlížej se tažením myši. Do dalších pater vedou schody, nebo použij skok.</p>
+        <div class="spawns">
+          <button data-spawn="street">Před domem</button>
+          <button data-spawn="S">Suterén</button>
+          <button data-spawn="P">Přízemí</button>
+          <button data-spawn="1P">1. patro</button>
+          <button data-spawn="A">Podkroví</button>
+        </div>
+        <div class="actions">
+          <button id="resume" class="primary">Pokračovat</button>
+          <button id="exitWalk">Zpět na model</button>
+        </div>
+      </div>
+    </div>
+
+    <!-- Výkresy -->
+    <div id="plans" hidden>
+      <div class="plans-inner">
+        <nav id="planList"></nav>
+        <figure><img id="planImg" alt="" /><figcaption id="planCap"></figcaption></figure>
+        <button id="closePlans" aria-label="Zavřít">×</button>
+      </div>
+    </div>
+
+    <script type="module" src="/src/main.ts"></script>
+  </body>
+</html>
