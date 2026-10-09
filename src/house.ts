@@ -89,7 +89,22 @@ export const ROOF_SLOPE = ROOF.rise / ROOF.ridgeY;
 const S = ROOF_SLOPE;
 const K = ROOF.ridgeY / (ROOF.hipApexX - 350); // valba hlavní střechy je strmější
 
-type RoofFace = { name: string; pts: [number, number][]; h: (x: number, y: number) => number };
+// Vikýř pokoje v podkroví na nižší valbě (pohled přední, krov: okno 225/80)
+export const DORMER = {
+  y0: 290, y1: 585, // včetně bočnic
+  depth: 273, // kde se pultová stříška potká s valbou
+  z0: 890, // výška stříšky nad líc fasády (cm vůči podlaze přízemí)
+  slope: 0.1,
+};
+export const dormerRoofZ = (x: number) => DORMER.z0 + DORMER.slope * x;
+const inDormer = (x: number, y: number) => x < DORMER.depth && y > DORMER.y0 && y < DORMER.y1;
+
+type RoofFace = {
+  name: string;
+  pts: [number, number][];
+  holes?: [number, number][][];
+  h: (x: number, y: number) => number;
+};
 
 /** Roviny střechy (půdorysné polygony v cm, výška v cm nad podlahou přízemí). */
 export function roofFaces(): RoofFace[] {
@@ -99,7 +114,10 @@ export function roofFaces(): RoofFace[] {
   const Mx = ROOF.hipApexX, My = ROOF.ridgeY;
   return [
     { name: 'zadní', pts: [[-o, -o], [1100, -o], [1100, My], [Mx, My], V, A], h: (_x, y) => E + S * y },
-    { name: 'valba křídla', pts: [[-o, -o], A, [-o, 900 + o]], h: (x) => E + S * x },
+    {
+      name: 'valba křídla', pts: [[-o, -o], A, [-o, 900 + o]], h: (x) => E + S * x,
+      holes: [[[0, DORMER.y0], [DORMER.depth, DORMER.y0], [DORMER.depth, DORMER.y1], [0, DORMER.y1]]],
+    },
     { name: 'přední křídla', pts: [[-o, 900 + o], A, V, [350 - oh, 900 + o]], h: (_x, y) => E + S * (900 - y) },
     { name: 'valba hlavní', pts: [[350 - oh, 900 + o], [350 - oh, 1400 + o], [Mx, My], V], h: (x) => E + K * S * (x - 350) },
     { name: 'uliční', pts: [[350 - oh, 1400 + o], [1100, 1400 + o], [1100, My], [Mx, My]], h: (_x, y) => E + S * (1400 - y) },
@@ -109,6 +127,7 @@ export function roofFaces(): RoofFace[] {
 /** Výška střešní plochy (cm) v bodě půdorysu. */
 export function roofHeight(x: number, y: number): number {
   const E = ROOF.eave;
+  if (inDormer(x, y)) return dormerRoofZ(x);
   const back = E + S * y;
   if (K * (x - 350) <= 900 - y) return Math.min(back, E + S * (900 - y), E + S * x); // křídlo
   return Math.min(back, E + S * (1400 - y), E + K * S * (x - 350)); // hlavní střecha
@@ -246,7 +265,10 @@ const basementRooms: Room[] = [
 const BIG = 600;
 const atticWalls: Wall[] = [
   { r: [0, 0, 1100, 45], h: BIG },
-  { r: [0, 45, 45, 900], h: BIG, o: [win(420, 660, 25, 80)] }, // okno pokoje (vikýř)
+  { r: [0, 45, 45, 900], h: BIG, o: [win(325, 550, 175, 80)] }, // trojdílné okno ve vikýři
+  // bočnice vikýře
+  { r: [0, DORMER.y0, DORMER.depth, DORMER.y0 + 15], h: BIG },
+  { r: [0, DORMER.y1 - 15, DORMER.depth, DORMER.y1], h: BIG },
   { r: [0, 855, 395, 900], h: BIG },
   { r: [350, 900, 395, 1400], h: BIG },
   { r: [395, 1355, 1100, 1400], h: BIG, o: stairWindowsFor(600, BIG) },

@@ -1,7 +1,7 @@
 import * as THREE from 'three';
 import { CSS2DObject } from 'three/examples/jsm/renderers/CSS2DRenderer.js';
 import {
-  BALCONY, FOOTPRINT, GARAGE, LEVELS, Level, ROOF, Room, STAIR, STAIR_HOLE, TERRAIN_Z, Wall, roofFaces, roofHeight,
+  BALCONY, FOOTPRINT, GARAGE, LEVELS, Level, ROOF, Room, STAIR, STAIR_HOLE, TERRAIN_Z, Wall, roofFaces, roofHeight, DORMER, dormerRoofZ,
 } from './house';
 import context from './context.json';
 
@@ -285,6 +285,8 @@ function onFacade(x: number, y: number) {
 }
 const wallColor = (cx: number, cy: number, nx: number, ny: number) => {
   if ((nx || ny) && onFacade(cx, cy)) return cx > 830 && ny > 0 ? COL.facadeStair : COL.facade;
+  // vnější líce bočnic vikýře
+  if (ny && cx < DORMER.depth && (Math.abs(cy - DORMER.y0) < 1 || Math.abs(cy - DORMER.y1) < 1)) return COL.facade;
   return COL.plaster;
 };
 
@@ -483,9 +485,11 @@ export function buildHouse(scene: THREE.Scene) {
   const triCm: [number, number, number][][] = []; // pro vrstevnice tašek
   for (const f of faces) {
     const contour = f.pts.map(([x, y]) => new THREE.Vector2(x, y));
-    const idx = THREE.ShapeUtils.triangulateShape(contour, []);
+    const holes = (f.holes ?? []).map((hl) => hl.map(([x, y]) => new THREE.Vector2(x, y)));
+    const all = [...f.pts, ...(f.holes ?? []).flat()];
+    const idx = THREE.ShapeUtils.triangulateShape(contour, holes);
     for (const [a, b, c] of idx) {
-      const t = [a, b, c].map((i) => [f.pts[i][0], f.pts[i][1], f.h(f.pts[i][0], f.pts[i][1])] as [number, number, number]);
+      const t = [a, b, c].map((i) => [all[i][0], all[i][1], f.h(all[i][0], all[i][1])] as [number, number, number]);
       // orientace: normála vzhůru
       const [p0, p1, p2] = t;
       const cross = (p1[0] - p0[0]) * (p2[1] - p0[1]) - (p1[1] - p0[1]) * (p2[0] - p0[0]);
@@ -534,6 +538,10 @@ export function buildHouse(scene: THREE.Scene) {
     new THREE.BufferGeometry().setFromPoints(edges),
     track(new THREE.LineBasicMaterial({ color: '#2a201c' })),
   ));
+  // pultová stříška vikýře
+  const db = new BoxBuilder(() => new THREE.Color('#5b4b44'));
+  db.add(-25, DORMER.y0 - 15, DORMER.depth + 15, DORMER.y1 + 15, DORMER.z0 - 14, DORMER.z0 + 40, (x) => dormerRoofZ(x) + 10);
+  addMesh(roof, db.geometry(), track(new THREE.MeshStandardMaterial({ vertexColors: true, roughness: 0.85 })));
   const cb = new BoxBuilder(() => new THREE.Color('#d8c7a6'));
   for (const [x0, y0, x1, y1] of [[560, 770, 650, 805], [920, 610, 1010, 665], [690, 440, 745, 480]]) {
     const top = Math.max(roofHeight(x0, y0), roofHeight(x1, y0), roofHeight(x1, y1), roofHeight(x0, y1)) + 110;
