@@ -453,6 +453,8 @@ function buildStairs(z: number, sb: BoxBuilder, wb: BoxBuilder, rails: THREE.Gro
     const t2 = z + 150 + rise * (i + 1);
     sb.add(x0, flight[1] - run * (i + 1), split - GAP, flight[1] - run * i, t2 - 30, t2); // rameno B (zpět)
   }
+  // mezipodesta; u vstupu (suterén → přízemí) včetně prahu dveří v uliční zdi
+  sb.add(x0, midLanding[0], x1, z < -150 ? STAIR_FRONT.y : midLanding[1], z + 130, z + 150);
   if (z < -150) {
     // mezi suterénem a přízemím je mezi rameny zeď
     wb.add(split - GAP, flight[0], split + GAP, flight[1], z, z + 300);
@@ -469,9 +471,6 @@ function buildStairs(z: number, sb: BoxBuilder, wb: BoxBuilder, rails: THREE.Gro
   }
   // neviditelná zábrana (aby se při chůzi nepropadlo zrcadlem)
   cb.add(split - GAP, flight[0], split + GAP, flight[1], z, z + 400, (_x, y) => Math.max(hA(y), hB(y)) + 100);
-  // mezipodesta; u vstupu (suterén → přízemí) včetně prahu dveří v uliční zdi
-  sb.add(x0, midLanding[0], x1, z < -150 ? STAIR_FRONT.y : midLanding[1], z + 130, z + 150);
-  void wb;
 }
 
 export function buildHouse(scene: THREE.Scene) {
@@ -777,8 +776,42 @@ export function buildSurroundings(scene: THREE.Scene) {
   // okolní budovy
   const bMat = new THREE.MeshStandardMaterial({ color: '#e4ddd0', roughness: 0.95 });
   const rMat = new THREE.MeshStandardMaterial({ color: '#9b5a45', roughness: 0.9, side: THREE.DoubleSide });
+  // řadové domy napravo: sedlová střecha navazuje na naši (stejný okap i hřeben), na konci řady valba
+  const ROW = [
+    { x0: 11.0, x1: 18.8, color: '#e7c35a' },
+    { x0: 18.8, x1: 26.3, color: '#e4ddd0' },
+    { x0: 26.3, x1: 36.3, color: '#d8c3a0' },
+  ];
+  const inRow = (pts: [number, number][]) => {
+    const cx = pts.reduce((a, p) => a + p[0], 0) / pts.length, cy = pts.reduce((a, p) => a + p[1], 0) / pts.length;
+    return cx > 11 && cx < 37 && cy > 4 && cy < 16;
+  };
+  {
+    const E = M(ROOF.eave), R = M(ROOF.eave + ROOF.rise), S = ROOF.rise / ROOF.ridgeY, o = M(ROOF.overhang);
+    const D = 14, ry = 7, xEnd = ROW[ROW.length - 1].x1, xr = xEnd - ry; // konec hřebene u valby
+    for (const h of ROW) {
+      const box = new THREE.Mesh(new THREE.BoxGeometry(h.x1 - h.x0 - 0.02, E - M(TERRAIN_Z), D), new THREE.MeshStandardMaterial({ color: h.color, roughness: 0.95 }));
+      box.position.set((h.x0 + h.x1) / 2, (E + M(TERRAIN_Z)) / 2, D / 2);
+      box.castShadow = box.receiveShadow = true;
+      group.add(box);
+    }
+    const P = (x: number, y: number, z: number) => new THREE.Vector3(x, z, y);
+    const eo = E - o * S;
+    const x0 = ROW[0].x0;
+    const tri: THREE.Vector3[] = [];
+    const quad = (a: THREE.Vector3, b: THREE.Vector3, c: THREE.Vector3, d: THREE.Vector3) => tri.push(a, b, c, a, c, d);
+    quad(P(x0, -o, eo), P(xEnd + o, -o, eo), P(xr, ry, R), P(x0, ry, R)); // zadní
+    quad(P(x0, D + o, eo), P(x0, ry, R), P(xr, ry, R), P(xEnd + o, D + o, eo)); // uliční
+    tri.push(P(xEnd + o, -o, eo), P(xEnd + o, D + o, eo), P(xr, ry, R)); // valba na konci řady
+    const rg = new THREE.BufferGeometry().setFromPoints(tri);
+    rg.computeVertexNormals();
+    const roofRow = new THREE.Mesh(rg, rMat);
+    roofRow.castShadow = roofRow.receiveShadow = true;
+    group.add(roofRow);
+  }
   for (const b of ctx.buildings) {
     if (b.pts.length < 4) continue;
+    if (inRow(b.pts.slice(0, -1))) continue;
     const pts = b.pts.slice(0, -1);
     const shape = new THREE.Shape(pts.map(([x, y]) => new THREE.Vector2(x, y)));
     const h = b.type === 'garage' ? 2.6 : Math.max(1, b.levels) * 3.1;

@@ -29,9 +29,13 @@ const HIGH: Pt[] = [
   [YARD_STEPS.x1, YARD_Y - YARD_STEPS.n * YARD_STEPS.run], [YARD_STEPS.x1, YARD_Y],
 ];
 // Plot pozemku – odměřeno z leteckého snímku (žlutá čára), metry v souřadnicích půdorysu.
-const FENCE_BACK: Pt[] = [
-  [11.0, 0.0], [11.0, -1.43], [10.09, -25.38], [-30.81, -17.62], [-30.16, 6.44],
-  [-2.77, 7.19], [-2.77, 12.5], [FX, 12.5], [FX, 18.6], // u balkonů pravý úhel
+// plot ve vyšší zahradě
+const FENCE_HIGH: Pt[] = [
+  [11.0, 0.0], [11.0, -1.43], [10.09, -25.38], [-30.81, -17.62], [-30.16, 6.44], [-4.2, 7.15],
+];
+// podezdívka s pletivem: ze svahu kolem balkonu a rohu až k ulici (u balkonů pravý úhel)
+const FENCE_LOW: Pt[] = [
+  [-4.2, 7.15], [-2.77, 7.19], [-2.77, 12.5], [FX, 12.5], [FX, 18.6],
 ];
 const PARTY_X = 11.0; // hranice se sousedem vpravo = štítová zeď domu
 const STREET_FENCE: [Pt, Pt] = [[FX, 18.75], [PARTY_X, 18.85]];
@@ -214,9 +218,15 @@ function tree(x: number, y: number, h: number, r: number, k: number, conifer = f
 }
 
 /** Plot: sloupky, vodorovná trubka, pletivo; volitelně betonová podezdívka. */
-function fence(group: THREE.Group, colliders: THREE.Object3D[], a: Pt, b: Pt, opt: { base?: number; h?: number } = {}) {
-  const base = opt.base ?? 0, h = opt.h ?? 1.4;
-  const g0 = (terrainAt(a) + terrainAt(b)) / 2 - 0.05; // plot stojí na terénu
+function fence(group: THREE.Group, colliders: THREE.Object3D[], a: Pt, b: Pt, opt: { base?: number; h?: number; wallTop?: number } = {}) {
+  let base = opt.base ?? 0;
+  const h = opt.h ?? 1.4;
+  let g0 = (terrainAt(a) + terrainAt(b)) / 2 - 0.05; // plot stojí na terénu
+  if (opt.wallTop !== undefined) {
+    // podezdívka s pevnou výškou koruny – ve vyšším terénu se do něj zanoří
+    g0 = Math.min(terrainAt(a), terrainAt(b)) - 0.05;
+    base = opt.wallTop - g0;
+  }
   const dx = b[0] - a[0], dy = b[1] - a[1], L = Math.hypot(dx, dy);
   if (L < 0.05) return;
   const ang = Math.atan2(dy, dx);
@@ -458,7 +468,10 @@ export function buildSite(scene: THREE.Scene) {
     group.add(tree(x, y, 6 + gRand() * 6, 1.8 + gRand() * 1.6, placed, gRand() < 0.25));
     placed++;
   }
-  for (let i = 0; i < FENCE_BACK.length - 1; i++) fence(group, colliders, FENCE_BACK[i], FENCE_BACK[i + 1], { h: 1.5 });
+  // plot ve vyšší zahradě (pletivo na terénu)
+  for (let i = 0; i < FENCE_HIGH.length - 1; i++) fence(group, colliders, FENCE_HIGH[i], FENCE_HIGH[i + 1], { h: 1.2 });
+  // podezdívka s pletivem pokračuje od ulice kolem rohu a balkonu až do svahu, kde se zanoří do terénu
+  for (let i = 0; i < FENCE_LOW.length - 1; i++) fence(group, colliders, FENCE_LOW[i], FENCE_LOW[i + 1], { wallTop: G + 0.6, h: 1.0 });
   for (let i = 0; i < FENCE_SIDE.length - 1; i++) fence(group, colliders, FENCE_SIDE[i], FENCE_SIDE[i + 1], { base: 0.6, h: 1.0 });
   // uliční plot: podezdívka + pletivo, vrata ke garáži, branka ke vstupu
   const [sa, sb] = STREET_FENCE;
