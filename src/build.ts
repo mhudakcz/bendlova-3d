@@ -360,11 +360,25 @@ function addMesh(parent: THREE.Object3D, g: THREE.BufferGeometry, m: THREE.Mater
   return mesh;
 }
 
-function buildWall(w: Wall, lv: Level, wb: BoxBuilder, rb: BoxBuilder, fb: BoxBuilder, glass: THREE.Group, top: TopFn) {
+function buildWall(w: Wall, lv: Level, wb: BoxBuilder, rb: BoxBuilder, fb: BoxBuilder, glass: THREE.Group, top: TopFn, cbRail?: BoxBuilder) {
   const [x0, y0, x1, y1] = w.r;
   const zb = lv.z;
   const H = w.h ?? lv.height;
   const zt = zb + H;
+  if (w.kind === 'railing' && w.rail === 'bars') {
+    // zábradlí schodiště v interiéru: červené madlo se sloupky (kolize přes neviditelnou zábranu)
+    const H = (w.h ?? 100) + lv.z;
+    const along = x1 - x0 >= y1 - y0, c = along ? (y0 + y1) / 2 : (x0 + x1) / 2;
+    const a: [number, number] = along ? [x0, c] : [c, y0], b: [number, number] = along ? [x1, c] : [c, y1];
+    bar(glass, [a[0], a[1], H], [b[0], b[1], H], 2.5);
+    const L = along ? x1 - x0 : y1 - y0;
+    for (let t = 0; t <= L; t += 15) {
+      const px = along ? x0 + t : c, py = along ? c : y0 + t;
+      bar(glass, [px, py, lv.z], [px, py, H], t === 0 || t + 15 > L ? 2 : 1);
+    }
+    cbRail?.add(x0, y0, x1, y1, lv.z, H);
+    return;
+  }
   const target = w.kind === 'railing' ? rb : wb;
   if (w.kind === 'railing') {
     // trubkové madlo a sloupky
@@ -531,7 +545,8 @@ export function buildHouse(scene: THREE.Scene) {
     const fb = new BoxBuilder();
     const sb = new BoxBuilder();
     const glass = new THREE.Group();
-    for (const w of lv.walls) buildWall(w, lv, wb, rb, fb, glass, top);
+    const cb = new BoxBuilder(); // neviditelné zábrany pro chůzi
+    for (const w of lv.walls) buildWall(w, lv, wb, rb, fb, glass, top, cb);
 
     // strop/podlahová deska
     // otvor schodiště ve stropech je protažený až k fasádě – vstupní dveře a okna schodiště přecházejí přes desku
@@ -548,7 +563,6 @@ export function buildHouse(scene: THREE.Scene) {
 
     // balkon ve výřezu
     const pb = new BoxBuilder(); // zpevněné plochy: balkon, garáž, sjezd
-    const cb = new BoxBuilder(); // neviditelné zábrany pro chůzi
     const rampB = new BoxBuilder(), drainB = new BoxBuilder();
     const zb = new BoxBuilder(); // pozinkované ocelové prvky
     const zincRails = new THREE.Group();

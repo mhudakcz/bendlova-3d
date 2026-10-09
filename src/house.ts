@@ -17,6 +17,7 @@ export type Wall = {
   o?: Opening[];
   h?: number; // výška zdi (cm), výchozí = výška podlaží
   kind?: 'wall' | 'railing';
+  rail?: 'mesh' | 'bars'; // zábradlí: pletivo (balkony) nebo sloupky (schodiště)
 };
 
 export type Room = {
@@ -327,10 +328,9 @@ const atticWalls: Wall[] = [
   // předsíň
   { r: [860, 435, 875, 770], h: 260, o: [door(480, 560)] },
   { r: [640, 815, 830, 830], h: 260, o: [door(700, 780)] },
-  { r: [830, 770, 860, SF_IN], h: BIG },
+  { r: [830, 830, 860, SF_IN], h: BIG }, // bok schodiště – od předsíně je průchod na podestu
   // zábradlí kolem otvoru schodiště
-  { r: [860, 1355 - 8, 1070, 1355], h: 100, kind: 'railing' },
-  { r: [975, 975, 1070, 983], h: 100, kind: 'railing' }, // zábradlí nad ramenem pod podestou podkroví
+  { r: [975, 975, 1070, 983], h: 100, kind: 'railing', rail: 'bars' }, // zábradlí nad ramenem pod podestou podkroví
 ];
 const atticRooms: Room[] = [
   { name: 'Pokoj', r: [45, 280, 625, 800], floor: 'wood' },
