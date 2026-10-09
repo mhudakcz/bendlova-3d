@@ -35,7 +35,30 @@ const capMat = track(new THREE.MeshBasicMaterial({ color: COL.cap, side: THREE.B
 const slabMat = track(new THREE.MeshStandardMaterial({ color: '#cfc8bd', roughness: 0.95 }));
 let stairMat: THREE.MeshStandardMaterial; // teraco, vytvoří se po texturách
 const zincMat = track(new THREE.MeshStandardMaterial({ color: '#b9bdc0', roughness: 0.45, metalness: 0.6 }));
-const greenMat = track(new THREE.MeshStandardMaterial({ color: '#2f6b55', roughness: 0.6, metalness: 0.3 }));
+const greenMat = track(new THREE.MeshStandardMaterial({ color: '#7a3d2f', roughness: 0.6, metalness: 0.3 })); // hnědá plechová stříška nad vraty
+const garageDoorMat = track(new THREE.MeshStandardMaterial({ color: '#6e3a2e', roughness: 0.55, metalness: 0.35 }));
+const drainMat = track(new THREE.MeshStandardMaterial({ color: '#2d2d2d', roughness: 0.7, metalness: 0.4 }));
+// zámková dlažba sjezdu
+const rampMat = (() => {
+  const c = document.createElement('canvas');
+  c.width = c.height = 256;
+  const g = c.getContext('2d')!;
+  g.fillStyle = '#7e7c78'; g.fillRect(0, 0, 256, 256);
+  const n = 8, t = 256 / n;
+  for (let i = 0; i < n; i++) for (let j = 0; j < n; j++) {
+    g.fillStyle = `hsl(30,3%,${50 + Math.random() * 8}%)`;
+    const x = i * t + ((j % 2) * t) / 2;
+    g.beginPath();
+    g.moveTo(x + 2, j * t + 2); g.lineTo(x + t * 0.55, j * t + 2); g.lineTo(x + t * 0.45, j * t + t / 2);
+    g.lineTo(x + t * 0.55, j * t + t - 2); g.lineTo(x + 2, j * t + t - 2); g.closePath(); g.fill();
+    g.fillRect((x + t * 0.6) % 256, j * t + 2, t * 0.38, t - 4);
+  }
+  const tex = new THREE.CanvasTexture(c);
+  tex.wrapS = tex.wrapT = THREE.RepeatWrapping;
+  tex.colorSpace = THREE.SRGBColorSpace;
+  tex.repeat.set(1 / 1.6, 1 / 1.6);
+  return track(new THREE.MeshStandardMaterial({ map: tex, roughness: 0.95 }));
+})();
 const pavedMat = track(new THREE.MeshStandardMaterial({ color: '#b3aea5', roughness: 0.95 })); // garáž, sjezd, balkon
 // zábradlí balkonů: zelené pletivo jako plot (průhledné)
 const railMeshTex = (() => {
@@ -507,6 +530,7 @@ export function buildHouse(scene: THREE.Scene) {
     // balkon ve výřezu
     const pb = new BoxBuilder(); // zpevněné plochy: balkon, garáž, sjezd
     const cb = new BoxBuilder(); // neviditelné zábrany pro chůzi
+    const rampB = new BoxBuilder(), drainB = new BoxBuilder(), doorB = new BoxBuilder();
     const zb = new BoxBuilder(); // pozinkované ocelové prvky
     const zincRails = new THREE.Group();
     const gb = new BoxBuilder(); // zelené plechové prvky (stříška nad garáží)
@@ -588,9 +612,15 @@ export function buildHouse(scene: THREE.Scene) {
       const bottom = lv.z + GARAGE.floor;
       const rampTop = (_x: number, y: number) => bottom + ((y - ry0) / (ry1 - ry0)) * (TERRAIN_Z - bottom);
       pb.add(rx0, ry0 - 45, rx1, ry0, bottom - 20, bottom); // práh ve vratech
-      pb.add(rx0, ry0, rx1, ry1, bottom - 30, TERRAIN_Z, rampTop);
+      rampB.add(rx0, ry0, rx1, ry1, bottom - 30, TERRAIN_Z, rampTop); // zámková dlažba
+      drainB.add(rx0, ry0 + 5, rx1, ry0 + 20, bottom - 5, bottom + 1); // odvodňovací žlab před vraty
       wb.add(rx0 - 20, GARDEN_STEPS.y1 + 20, rx0, ry1, bottom - 30, TERRAIN_Z + 15);
-      wb.add(rx1, ry0, rx1 + 20, ry1, bottom - 30, TERRAIN_Z + 15);
+      wb.add(rx1, ry0, rx1 + 20, ry1, bottom - 30, TERRAIN_Z + 30); // vyšší zídka k záhonu u vstupu
+      // hnědá dvoukřídlá vrata garáže (zavřená)
+      const [g0, g1] = GARAGE.gate, gm = (g0 + g1) / 2;
+      doorB.add(g0, 1374, gm - 1, 1380, bottom, -40);
+      doorB.add(gm + 1, 1374, g1, 1380, bottom, -40);
+      cb.add(g0, 1372, g1, 1382, bottom, -40);
       // schody ze sjezdu nahoru na terén (cesta kolem domu do zahrady)
       const { x0: sx0, x1: sx1, y0: sy0, y1: sy1, n } = GARDEN_STEPS;
       const base = -240, rise = (TERRAIN_Z - base) / n, run = (sx1 - sx0) / n;
@@ -613,13 +643,16 @@ export function buildHouse(scene: THREE.Scene) {
     addMesh(g, fb.geometry(), frameMat, false);
     const stairs = addMesh(g, sb.geometry(), stairMat);
     const paved = addMesh(g, pb.geometry(), pavedMat);
+    const ramp = addMesh(g, rampB.geometry(), rampMat, false);
+    addMesh(g, drainB.geometry(), drainMat, false);
+    addMesh(g, doorB.geometry(), garageDoorMat, false);
     const zinc = addMesh(g, zb.geometry(), zincMat, false);
     g.add(zincRails);
     addMesh(g, gb.geometry(), greenMat);
     g.add(glass);
 
     // podlahy místností
-    const floors: THREE.Object3D[] = [slab, stairs, paved, zinc];
+    const floors: THREE.Object3D[] = [slab, stairs, paved, zinc, ramp];
     const labels: CSS2DObject[] = [];
     for (const r of lv.rooms) {
       const [x0, y0, x1, y1] = r.r;

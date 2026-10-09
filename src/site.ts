@@ -48,7 +48,9 @@ export const BUSHES: [number, number, number][] = [
 ];
 // cestička (dlažba v úrovni ulice): od schodů u garáže kolem balkonů a podél skladu až na dvorek
 export const PATHS: [number, number, number, number][] = [
-  [1.6, 14.05, 3.25, 15.2], // od schodů ze sjezdu
+  [1.6, 14.05, 2.9, 15.2], // podesta nad schody ze sjezdu
+  [0, 9.0, 3.5, 12.5], // dlažba pod balkonem a kolem schodů z balkonu
+  [-2.77, 7.2, 0, 12.5], // dlažba u rohu domu
   [1.6, 10.6, 3.5, 14.05], // předzahrádkou a pod schody z balkonu
   [PATH_X[0], 10.6, 2.6, 11.6], // kolem balkonů
   [PATH_X[0], YARD_Y, PATH_X[1], 10.6], // podél boku domu (u skladu)
@@ -58,6 +60,8 @@ export const PATHS: [number, number, number, number][] = [
 // vyvýšené plochy předzahrádky (trávník s keři)
 export const FRONT_BEDS: [number, number, number, number][] = [
   [FX, 12.5, 1.6, 18.75], [1.6, 15.2, 4.25, 18.75],
+  [8.1, 15.3, 8.65, 18.75], // záhon mezi sjezdem a chodníčkem ke vchodu
+  [9.9, 15.3, 11.0, 18.75], // záhon u plotu k sousedovi
 ];
 export const FENCE_SIDE: Pt[] = [[PARTY_X, 18.85], [PARTY_X, 15.3]];
 export const GARAGE_GATE: [number, number] = [4.45, 7.95]; // x na uličním plotu
@@ -365,6 +369,84 @@ export function buildSite(scene: THREE.Scene) {
         group.add(tree(x, y, 7 + parkRand() * 5, 2.2 + parkRand() * 1.5, i));
       }
     }
+  }
+
+  // ---------------------------------------------------------- podesta nad schody ze sjezdu: zaoblená zídka a květináč
+  {
+    const cx = 2.9, cy = 14.0, R = 1.3, segs = 10;
+    for (let i = 0; i < segs; i++) {
+      const a0 = Math.PI / 2 + (i / segs) * (Math.PI / 2), a1 = Math.PI / 2 + ((i + 1) / segs) * (Math.PI / 2);
+      const p0: Pt = [cx + Math.cos(a0) * R, cy + Math.sin(a0) * R], p1: Pt = [cx + Math.cos(a1) * R, cy + Math.sin(a1) * R];
+      const L = Math.hypot(p1[0] - p0[0], p1[1] - p0[1]) + 0.02;
+      const w = new THREE.Mesh(new THREE.BoxGeometry(L, 0.5, 0.15), concreteMat);
+      w.position.set((p0[0] + p1[0]) / 2, G + 0.25, (p0[1] + p1[1]) / 2);
+      w.rotation.y = -Math.atan2(p1[1] - p0[1], p1[0] - p0[0]);
+      w.castShadow = w.receiveShadow = true;
+      group.add(w);
+      colliders.push(w);
+    }
+    const pot = new THREE.Mesh(new THREE.CylinderGeometry(0.22, 0.16, 0.25, 14), new THREE.MeshStandardMaterial({ color: '#4a3a32', roughness: 0.8 }));
+    pot.position.set(2.35, G + 0.13, 14.6);
+    const flowers = new THREE.Mesh(new THREE.IcosahedronGeometry(0.25, 1), new THREE.MeshStandardMaterial({ color: '#3f7a3a', roughness: 1, flatShading: true }));
+    flowers.position.set(2.35, G + 0.38, 14.6);
+    group.add(pot, flowers);
+    for (let i = 0; i < 5; i++) {
+      const f = new THREE.Mesh(new THREE.SphereGeometry(0.05, 6, 4), new THREE.MeshStandardMaterial({ color: '#e0283a' }));
+      f.position.set(2.35 + Math.cos(i * 1.3) * 0.15, G + 0.55, 14.6 + Math.sin(i * 1.3) * 0.15);
+      group.add(f);
+    }
+  }
+
+  // ---------------------------------------------------------- květiny v záhonech u vstupu
+  {
+    const fr = rng(11);
+    const cols = ['#e04a3a', '#f0a030', '#c050c0', '#f2e14a', '#ffffff', '#8a7fd0'];
+    for (const [x0, y0, x1, y1] of FRONT_BEDS.slice(2)) {
+      for (let i = 0; i < 26; i++) {
+        const x = x0 + 0.1 + fr() * (x1 - x0 - 0.2), y = y0 + 0.1 + fr() * (y1 - y0 - 0.2);
+        const plant = new THREE.Mesh(new THREE.IcosahedronGeometry(0.12 + fr() * 0.1, 0), leafMats[i % leafMats.length]);
+        plant.position.set(x, G + FRONT_YARD_H + 0.12, y);
+        group.add(plant);
+        if (fr() < 0.6) {
+          const f = new THREE.Mesh(new THREE.SphereGeometry(0.04, 6, 4), new THREE.MeshStandardMaterial({ color: cols[(fr() * cols.length) | 0] }));
+          f.position.set(x, G + FRONT_YARD_H + 0.3, y);
+          group.add(f);
+        }
+      }
+    }
+  }
+
+  // ---------------------------------------------------------- dvorek: konstrukce na prádlo, sudy, lavička
+  {
+    const pipe = new THREE.MeshStandardMaterial({ color: '#8a6a52', roughness: 0.6, metalness: 0.4 });
+    const post = (x: number, y: number, h: number) => {
+      const m = new THREE.Mesh(new THREE.CylinderGeometry(0.03, 0.03, h, 8), pipe);
+      m.position.set(x, G + h / 2, y);
+      m.castShadow = true;
+      group.add(m);
+    };
+    post(6.0, YARD_Y + 0.3, 2.1);
+    post(6.0, -0.4, 2.1);
+    const top = new THREE.Mesh(new THREE.CylinderGeometry(0.03, 0.03, Math.abs(YARD_Y + 0.7), 8), pipe);
+    top.rotation.x = Math.PI / 2;
+    top.position.set(6.0, G + 2.1, (YARD_Y + 0.3 - 0.4) / 2);
+    group.add(top);
+    const barrel = (x: number, y: number, r: number, h: number, c: string, metal = 0) => {
+      const m = new THREE.Mesh(new THREE.CylinderGeometry(r, r, h, 18), new THREE.MeshStandardMaterial({ color: c, roughness: 0.5, metalness: metal }));
+      m.position.set(x, G + h / 2, y);
+      m.castShadow = m.receiveShadow = true;
+      group.add(m);
+      colliders.push(m);
+    };
+    barrel(0.35, -0.45, 0.29, 0.9, '#2f63b8');
+    barrel(0.95, -0.5, 0.3, 0.85, '#c9ccce', 0.6);
+    // lavička u zídky
+    const wood = new THREE.MeshStandardMaterial({ color: '#5a3a28', roughness: 0.8 });
+    const seat = new THREE.Mesh(new THREE.BoxGeometry(1.5, 0.05, 0.45), wood);
+    seat.position.set(3.2, G + 0.45, YARD_Y + 0.35);
+    const back = new THREE.Mesh(new THREE.BoxGeometry(1.5, 0.4, 0.04), wood);
+    back.position.set(3.2, G + 0.7, YARD_Y + 0.14);
+    for (const m of [seat, back]) { m.castShadow = true; group.add(m); }
   }
 
   // ---------------------------------------------------------- záhony

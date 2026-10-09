@@ -44,7 +44,7 @@ export const GARAGE = {
 };
 
 // Schody ze sjezdu do garáže nahoru na terén (vlevo od vrat, podél fasády) – cesta do zahrady
-export const GARDEN_STEPS = { x0: 325, x1: 425, y0: 1405, y1: 1520, n: 4 }; // 4 strmé stupně ~22 cm
+export const GARDEN_STEPS = { x0: 290, x1: 425, y0: 1405, y1: 1520, n: 5 }; // 5 betonových stupňů (podle fotek)
 
 // Balkon v rohu výřezu: celá šířka výřezu (350 cm), hloubka 150 cm od zdi ložnice
 export const BALCONY: [number, number, number, number] = [0, 900, 350, 1020];
