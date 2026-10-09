@@ -123,7 +123,6 @@ export function roofFaces(): RoofFace[] {
   const V: [number, number] = [350 + ROOF.wingRidgeY / K, ROOF.wingRidgeY]; // konec hřebene křídla / úžlabí
   const Mx = ROOF.hipApexX, My = ROOF.ridgeY;
   const FRONT_EAVE = STAIR_FRONT.y + 20;
-  const FC: [number, number] = [350 - (FRONT_EAVE - 1400) / K, FRONT_EAVE]; // nárožní roh okapu
   return [
     { name: 'zadní', pts: [[-o, -o], [1100, -o], [1100, My], [Mx, My], V, A], h: (_x, y) => E + S * y },
     {
@@ -132,8 +131,9 @@ export function roofFaces(): RoofFace[] {
     },
     { name: 'přední křídla', pts: [[-o, 900 + o], A, V, [350 - oh, 900 + o]], h: (_x, y) => E + S * (900 - y) },
     // uliční okap jde rovně až před předsazené schodiště – nad béžovou částí je hluboký podhled
-    { name: 'valba hlavní', pts: [[350 - oh, 900 + o], FC, [Mx, My], V], h: (x) => E + K * S * (x - 350) },
-    { name: 'uliční', pts: [FC, [1100, FRONT_EAVE], [1100, My], [Mx, My]], h: (_x, y) => E + S * (1400 - y) },
+    // nároží zůstává s běžným přesahem; hluboký uliční přesah končí rovně nad bokem domu (x = 350)
+    { name: 'valba hlavní', pts: [[350 - oh, 900 + o], [350 - oh, 1400 + o], [Mx, My], V], h: (x) => E + K * S * (x - 350) },
+    { name: 'uliční', pts: [[350 - oh, 1400 + o], [350 - oh, FRONT_EAVE], [1100, FRONT_EAVE], [1100, My], [Mx, My]], h: (_x, y) => E + S * (1400 - y) },
   ];
 }
 
