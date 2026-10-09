@@ -261,9 +261,10 @@ export function buildSite(scene: THREE.Scene) {
       group.add(curb);
       for (const run of runs(r.pts, side)) {
         if (run.park) {
-          // park lemují nízké keře
-          const h0 = side * (ROAD_W / 2 + 0.5), h1 = side * (ROAD_W / 2 + 1.2);
-          const hedge = new THREE.Mesh(strip(run.pts, Math.min(h0, h1), Math.max(h0, h1), G + 0.65, false, 1, 0.65), hedgeMat);
+          // park lemuje živý plot z keřů vysoký ~2 m
+          const HEDGE_H = 2.0;
+          const h0 = side * (ROAD_W / 2 + 0.5), h1 = side * (ROAD_W / 2 + 1.7);
+          const hedge = new THREE.Mesh(strip(run.pts, Math.min(h0, h1), Math.max(h0, h1), G + HEDGE_H, false, 1, HEDGE_H), hedgeMat);
           hedge.castShadow = hedge.receiveShadow = true;
           group.add(hedge);
           colliders.push(hedge);
