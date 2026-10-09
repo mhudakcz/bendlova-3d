@@ -351,7 +351,8 @@ renderer.domElement.addEventListener('pointermove', (e) => {
   if (e.pointerType === 'touch') {
     const last = touchLast.get(e.pointerId);
     if (last) {
-      turn((e.clientX - last.x) * 0.005, (e.clientY - last.y) * 0.005);
+      // dotyk: obraz se posouvá s prstem (opačně než myš)
+      turn(-(e.clientX - last.x) * 0.005, -(e.clientY - last.y) * 0.005);
       touchLast.set(e.pointerId, { x: e.clientX, y: e.clientY });
     }
     return;
