@@ -174,7 +174,7 @@ function flatRooms(level: 'P' | '1P'): Room[] {
     { name: 'WC', r: [970, 486, 1070, 612], floor: 'tile' },
     { name: 'Komora', r: [970, 665, 1070, 760], floor: room },
     { name: 'Obývací pokoj', r: [395, 770, 830, 1355], floor: room },
-    { name: 'Schodiště', r: [860, 770, 1070, 870], floor: 'stone' },
+    { name: 'Schodiště', r: [860, 770, 1070, 870], floor: 'terrazzo' },
     { name: 'Balkon', r: BALCONY, floor: 'stone' },
   ];
 }
@@ -194,7 +194,7 @@ const basementRooms: Room[] = [
   { name: 'Prádelna', r: [800, 45, 1070, 300], floor: 'tile' },
   { name: 'Chodba', r: [610, 315, 1070, 760], floor: 'concrete' },
   { name: 'Garáž', r: GARAGE.room, floor: 'concrete', dz: GARAGE.floor },
-  { name: 'Schodiště', r: [860, 770, 1070, 870], floor: 'stone' },
+  { name: 'Schodiště', r: [860, 770, 1070, 870], floor: 'terrazzo' },
 ];
 
 // ---------- Podkroví ----------
@@ -228,7 +228,7 @@ const atticRooms: Room[] = [
   { name: 'Půda', r: [45, 45, 625, 265], floor: 'concrete' },
   { name: 'Půda', r: [395, 830, 830, 1355], floor: 'concrete' },
   { name: 'Půda', r: [45, 815, 395, 855], floor: 'concrete' },
-  { name: 'Schodiště', r: [860, 770, 1070, 870], floor: 'stone' },
+  { name: 'Schodiště', r: [860, 770, 1070, 870], floor: 'terrazzo' },
 ];
 
 export const LEVELS: Level[] = [
