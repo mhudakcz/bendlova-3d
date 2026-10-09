@@ -257,6 +257,7 @@ function pause() {
 }
 function resume() {
   walking = true;
+  (document.activeElement as HTMLElement | null)?.blur?.(); // aby klávesy nestiskly tlačítko v panelu
   $('#walkPause').hidden = true;
   $('#crosshair').hidden = false;
   renderer.domElement.focus();
@@ -301,6 +302,8 @@ renderer.domElement.addEventListener('pointermove', (e) => {
 const WALK_KEYS = ['KeyW', 'KeyA', 'KeyS', 'KeyD', 'ArrowUp', 'ArrowDown', 'ArrowLeft', 'ArrowRight', 'ShiftLeft', 'ShiftRight', 'KeyQ', 'KeyE'];
 addEventListener('keydown', (e) => {
   if (state.mode !== 'walk') return;
+  // při procházení nesmí mezerník/Enter/šipky ovládat tlačítka panelu (jinak by se přeplo na celý dům)
+  if (['Space', 'Enter', 'NumpadEnter', 'ArrowUp', 'ArrowDown', 'ArrowLeft', 'ArrowRight'].includes(e.code)) e.preventDefault();
   if (e.code === 'Escape') { if (walking) pause(); else resume(); return; }
   if (!walking) { if (e.code === 'Enter' || e.code === 'Space') resume(); return; }
   if (WALK_KEYS.includes(e.code)) e.preventDefault();

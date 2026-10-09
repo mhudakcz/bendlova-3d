@@ -31,7 +31,7 @@ const HIGH: Pt[] = [
 // Plot pozemku – odměřeno z leteckého snímku (žlutá čára), metry v souřadnicích půdorysu.
 const FENCE_BACK: Pt[] = [
   [11.0, 0.0], [11.0, -1.43], [10.09, -25.38], [-30.81, -17.62], [-30.16, 6.44],
-  [-2.77, 7.19], [-2.77, 11.65], [FX, 11.65], [FX, 18.6], // u balkonů pravý úhel
+  [-2.77, 7.19], [-2.77, 12.5], [FX, 12.5], [FX, 18.6], // u balkonů pravý úhel
 ];
 const PARTY_X = 11.0; // hranice se sousedem vpravo = štítová zeď domu
 const STREET_FENCE: [Pt, Pt] = [[FX, 18.75], [PARTY_X, 18.85]];
@@ -39,13 +39,13 @@ const STREET_FENCE: [Pt, Pt] = [[FX, 18.75], [PARTY_X, 18.85]];
 const BEDS = { x0: 1.6, y0: -20.0, y1: -14.2, n: 5, w: 0.7, gap: 0.35 };
 // keře v předzahrádce vedle schodů (x, y, poloměr)
 const BUSHES: [number, number, number][] = [
-  [1.3, 12.4, 0.35], [3.0, 12.4, 0.4], [1.3, 13.6, 0.35], [2.9, 17.6, 0.55], [1.5, 17.2, 0.5],
-  [3.7, 17.9, 0.45], [3.05, 13.4, 0.35], [2.0, 16.3, 0.5],
+  [1.3, 13.0, 0.3], [1.3, 14.2, 0.3], [2.9, 17.6, 0.55], [1.5, 17.2, 0.5],
+  [3.7, 17.9, 0.45], [2.0, 16.3, 0.5],
 ];
 // cestička (dlažba v úrovni ulice): od schodů u garáže kolem balkonů a podél skladu až na dvorek
 const PATHS: [number, number, number, number][] = [
   [1.6, 14.05, 3.25, 15.2], // od schodů ze sjezdu
-  [1.6, 10.6, 2.6, 14.05], // předzahrádkou
+  [1.6, 10.6, 3.5, 14.05], // předzahrádkou a pod schody z balkonu
   [PATH_X[0], 10.6, 2.6, 11.6], // kolem balkonů
   [PATH_X[0], YARD_Y, PATH_X[1], 10.6], // podél boku domu (u skladu)
   [PATH_X[0], YARD_Y, 11.0, 0.0], // dvorek za domem
@@ -53,7 +53,7 @@ const PATHS: [number, number, number, number][] = [
 ];
 // vyvýšené plochy předzahrádky (trávník s keři)
 const FRONT_BEDS: [number, number, number, number][] = [
-  [FX, 11.65, 1.6, 18.75], [1.6, 15.2, 4.25, 18.75], [2.6, 11.6, 3.5, 14.0],
+  [FX, 12.5, 1.6, 18.75], [1.6, 15.2, 4.25, 18.75],
 ];
 const FENCE_SIDE: Pt[] = [[PARTY_X, 18.85], [PARTY_X, 15.3]];
 const GARAGE_GATE: [number, number] = [4.45, 7.95]; // x na uličním plotu
@@ -61,7 +61,7 @@ const HOUSE_GATE: [number, number] = [8.75, 9.8];
 // zahrada za domem (trávník)
 const GARDEN: Pt[] = [
   [11.0, 0.0], [11.0, -1.43], [10.09, -25.38], [-30.81, -17.62], [-30.16, 6.44],
-  [-2.77, 7.19], [-2.77, 11.65], [0, 11.65], [0, 0],
+  [-2.77, 7.19], [-2.77, 12.5], [0, 12.5], [0, 0],
 ];
 
 function canvasTex(size: number, draw: (g: CanvasRenderingContext2D, s: number) => void, repeatMeters: number) {

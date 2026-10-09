@@ -47,7 +47,10 @@ export const GARAGE = {
 export const GARDEN_STEPS = { x0: 325, x1: 425, y0: 1405, y1: 1520, n: 4 }; // 4 strmé stupně ~22 cm
 
 // Balkon v rohu výřezu: celá šířka výřezu (350 cm), hloubka 150 cm od zdi ložnice
-export const BALCONY: [number, number, number, number] = [0, 900, 350, 1050];
+export const BALCONY: [number, number, number, number] = [0, 900, 350, 1020];
+// ocelové schody z balkonu v přízemí do zahrady (pro psa): plošinka před koncem balkonu u boční zdi obýváku,
+// rameno vede souběžně s balkonem podél jeho čela směrem od zdi
+export const DOG_STEPS = { plat: [290, 350] as [number, number], y0: BALCONY[3], y1: BALCONY[3] + 60, n: 9, run: 290 / 9 }; // rameno přes celou délku balkonu
 
 export type Level = {
   id: string;
@@ -232,7 +235,7 @@ function flatWalls(level: 'P' | '1P'): Wall[] {
     { r: [560, 770, 650, 800], h: 300 }, // komín S.P.I.
     // balkon ve výřezu
     { r: [0, 900, 8, BALCONY[3]], h: 100, kind: 'railing' },
-    { r: [0, BALCONY[3] - 8, 350, BALCONY[3]], h: 100, kind: 'railing' },
+    { r: [0, BALCONY[3] - 8, level === 'P' ? DOG_STEPS.plat[0] : 350, BALCONY[3]], h: 100, kind: 'railing' },
   ];
 }
 
@@ -260,7 +263,7 @@ function flatRooms(level: 'P' | '1P'): Room[] {
 
 // ---------- Suterén ----------
 // Kotel ve skladu 4,5 m² (x 610–785, y 45–300), odtah do komína
-export const BOILER = { x0: 712, y0: 52, x1: 772, y1: 112, h: 90 };
+export const BOILER = { x0: 725, y0: 190, x1: 785, y1: 250, h: 90 }; // u zdi s prádelnou
 
 // Velký sklad v suterénu je zapuštěný o 50 cm níž, z chodby do něj vedou schody dolů.
 export const SKLAD_PIT = {
@@ -269,16 +272,17 @@ export const SKLAD_PIT = {
   outline: [[45, 45], [565, 45], [565, 600], [700, 600], [700, 680], [565, 680], [565, 760], [395, 760], [395, 855], [45, 855]] as [number, number][],
   door: [600, 680] as [number, number], // dveře ze chodby (ve zdi x 565–610)
   steps: { x0: 610, y0: 600, y1: 680, n: 3, run: 30 }, // schody v chodbě, sestupují ke dveřím
+  boilerSteps: { x1: 565, y0: 100, y1: 180, n: 3, run: 30 }, // ve skladu nahoru ke dveřím kotelny
   divider: { y0: 535, y1: 550, door: [450, 530] as [number, number] }, // příčka dělící sklad na dvě části (podle náčrtu)
 };
 
 const basementWalls: Wall[] = [
   ...outerWalls('S'),
   ...stairHallWalls(),
-  { r: [565, 45, 610, 760], o: [door(600, 680, 150)] }, // nosná zeď sklad | chodba (dveře sahají pod podlahu – jáma)
+  { r: [565, 45, 610, 760], o: [door(100, 180), door(600, 680, 150)] }, // nosná zeď: dveře sklad → kotelna, chodba → sklad
   { r: [45, SKLAD_PIT.divider.y0, 565, SKLAD_PIT.divider.y1], o: [door(SKLAD_PIT.divider.door[0], SKLAD_PIT.divider.door[1], 150)] }, // příčka ve skladu
   { r: [785, 45, 800, 300] }, // sklad | prádelna
-  { r: [610, 300, 1070, 315], o: [door(650, 730), door(880, 960)] },
+  { r: [610, 300, 1070, 315], o: [door(880, 960)] }, // do kotelny se z chodby nevchází
   { r: [395, 760, 830, 805], o: [door(700, 780)] }, // chodba | sklep
 ];
 const basementRooms: Room[] = [

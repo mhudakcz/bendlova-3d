@@ -1,7 +1,7 @@
 import * as THREE from 'three';
 import { CSS2DObject } from 'three/examples/jsm/renderers/CSS2DRenderer.js';
 import {
-  BALCONY, BOILER, FOOTPRINT, GARAGE, GARDEN_STEPS, SKLAD_PIT, LEVELS, Level, ROOF, Room, STAIR, STAIR_FRONT, STAIR_HOLE, TERRAIN_Z, Wall, roofFaces, roofHeight, DORMER, dormerRoofZ,
+  BALCONY, BOILER, DOG_STEPS, FOOTPRINT, GARAGE, GARDEN_STEPS, SKLAD_PIT, LEVELS, Level, ROOF, Room, STAIR, STAIR_FRONT, STAIR_HOLE, TERRAIN_Z, Wall, roofFaces, roofHeight, DORMER, dormerRoofZ,
 } from './house';
 import context from './context.json';
 
@@ -34,9 +34,30 @@ const wallMat = track(new THREE.MeshStandardMaterial({ vertexColors: true, rough
 const capMat = track(new THREE.MeshBasicMaterial({ color: COL.cap, side: THREE.BackSide }));
 const slabMat = track(new THREE.MeshStandardMaterial({ color: '#cfc8bd', roughness: 0.95 }));
 let stairMat: THREE.MeshStandardMaterial; // teraco, vytvoří se po texturách
+const zincMat = track(new THREE.MeshStandardMaterial({ color: '#b9bdc0', roughness: 0.45, metalness: 0.6 }));
 const greenMat = track(new THREE.MeshStandardMaterial({ color: '#2f6b55', roughness: 0.6, metalness: 0.3 }));
 const pavedMat = track(new THREE.MeshStandardMaterial({ color: '#b3aea5', roughness: 0.95 })); // garáž, sjezd, balkon
-const railMat = track(new THREE.MeshStandardMaterial({ color: '#7d847c', roughness: 0.6, metalness: 0.3 }));
+// zábradlí balkonů: zelené pletivo jako plot (průhledné)
+const railMeshTex = (() => {
+  const c = document.createElement('canvas');
+  c.width = c.height = 128;
+  const g = c.getContext('2d')!;
+  g.strokeStyle = '#ffffff'; g.lineWidth = 3;
+  for (let i = 0; i <= 8; i++) {
+    const p = (i * 128) / 8;
+    g.beginPath(); g.moveTo(p, 0); g.lineTo(p, 128); g.stroke();
+    g.beginPath(); g.moveTo(0, p); g.lineTo(128, p); g.stroke();
+  }
+  const t = new THREE.CanvasTexture(c);
+  t.wrapS = t.wrapT = THREE.RepeatWrapping;
+  t.repeat.set(1 / 0.6, 1 / 0.6);
+  return t;
+})();
+const railMat = track(new THREE.MeshStandardMaterial({
+  color: '#3f7a5e', map: railMeshTex, alphaMap: railMeshTex, transparent: true, alphaTest: 0.3,
+  side: THREE.DoubleSide, roughness: 0.55, metalness: 0.3,
+}));
+const railTubeMat = track(new THREE.MeshStandardMaterial({ color: '#3f7a5e', roughness: 0.5, metalness: 0.3 }));
 const frameMat = track(new THREE.MeshStandardMaterial({ color: '#fbfbf8', roughness: 0.5 }));
 const glassMat = track(
   new THREE.MeshPhysicalMaterial({
@@ -320,6 +341,19 @@ function buildWall(w: Wall, lv: Level, wb: BoxBuilder, rb: BoxBuilder, fb: BoxBu
   const H = w.h ?? lv.height;
   const zt = zb + H;
   const target = w.kind === 'railing' ? rb : wb;
+  if (w.kind === 'railing') {
+    // trubkové madlo a sloupky
+    const H = (w.h ?? 100) + lv.z;
+    const alongX0 = x1 - x0 >= y1 - y0;
+    const c = alongX0 ? (y0 + y1) / 2 : (x0 + x1) / 2;
+    const a: [number, number] = alongX0 ? [x0, c] : [c, y0], b: [number, number] = alongX0 ? [x1, c] : [c, y1];
+    bar(glass, [a[0], a[1], H], [b[0], b[1], H], 2.5, railTubeMat);
+    const L = alongX0 ? x1 - x0 : y1 - y0, n = Math.max(1, Math.round(L / 150));
+    for (let i = 0; i <= n; i++) {
+      const px = a[0] + ((b[0] - a[0]) * i) / n, py = a[1] + ((b[1] - a[1]) * i) / n;
+      bar(glass, [px, py, lv.z], [px, py, H], 2.5, railTubeMat);
+    }
+  }
   const alongX = x1 - x0 >= y1 - y0;
   const [s0, s1] = alongX ? [x0, x1] : [y0, y1];
   const piece = (a: number, b: number, za: number, zb2: number) => {
@@ -399,10 +433,10 @@ const invisibleMat = new THREE.MeshBasicMaterial({ visible: false });
 const GAP = 10; // polovina šířky zrcadla mezi rameny (cm)
 
 /** tyč mezi dvěma body (cm, půdorys x/y + výška z) */
-function bar(parent: THREE.Object3D, a: [number, number, number], b: [number, number, number], r: number) {
+function bar(parent: THREE.Object3D, a: [number, number, number], b: [number, number, number], r: number, mat: THREE.Material = stairRailMat) {
   const A = new THREE.Vector3(M(a[0]), M(a[2]), M(a[1])), B = new THREE.Vector3(M(b[0]), M(b[2]), M(b[1]));
   const len = A.distanceTo(B);
-  const m = new THREE.Mesh(new THREE.CylinderGeometry(M(r), M(r), len, 8), stairRailMat);
+  const m = new THREE.Mesh(new THREE.CylinderGeometry(M(r), M(r), len, 8), mat);
   m.position.copy(A).add(B).multiplyScalar(0.5);
   m.quaternion.setFromUnitVectors(new THREE.Vector3(0, 1, 0), B.clone().sub(A).normalize());
   m.castShadow = true;
@@ -418,6 +452,11 @@ function buildStairs(z: number, sb: BoxBuilder, wb: BoxBuilder, rails: THREE.Gro
     sb.add(split + GAP, flight[0] + run * i, x1, flight[0] + run * (i + 1), t - 30, t); // rameno A (k ulici)
     const t2 = z + 150 + rise * (i + 1);
     sb.add(x0, flight[1] - run * (i + 1), split - GAP, flight[1] - run * i, t2 - 30, t2); // rameno B (zpět)
+  }
+  if (z < -150) {
+    // mezi suterénem a přízemím je mezi rameny zeď
+    wb.add(split - GAP, flight[0], split + GAP, flight[1], z, z + 300);
+    return;
   }
   // červené zábradlí podél zrcadla (volný prostor mezi rameny)
   const H = 90;
@@ -469,8 +508,35 @@ export function buildHouse(scene: THREE.Scene) {
     // balkon ve výřezu
     const pb = new BoxBuilder(); // zpevněné plochy: balkon, garáž, sjezd
     const cb = new BoxBuilder(); // neviditelné zábrany pro chůzi
+    const zb = new BoxBuilder(); // pozinkované ocelové prvky
+    const zincRails = new THREE.Group();
     const gb = new BoxBuilder(); // zelené plechové prvky (stříška nad garáží)
     if (lv.id === 'P') pb.add(850, STAIR_FRONT.y, 1050, STAIR_FRONT.y + 50, 95, 108); // stříška nad vstupem
+    if (lv.id === 'P') {
+      // ocelové schody z balkonu do zahrady (pozinkovaný rošt, šířka 60 cm), souběžně s balkonem
+      const d = DOG_STEPS, ground = TERRAIN_Z;
+      const [p0, p1] = d.plat;
+      zb.add(p0, d.y0, p1, d.y1, lv.z - 6, lv.z); // plošinka v úrovni balkonu
+      for (let i = 0; i < d.n; i++) {
+        const top = lv.z + ((ground - lv.z) * (i + 1)) / (d.n + 1);
+        zb.add(p0 - d.run * (i + 1) - 3, d.y0, p0 - d.run * i, d.y1, top - 4, top);
+      }
+      const xEnd = p0 - d.run * d.n;
+      // lehká konstrukce: dvě šikmé nosnice a sloupky pod plošinkou (pod schody je volný průchod)
+      for (const y of [d.y0 + 3, d.y1 - 3]) {
+        bar(zincRails, [p0, y, lv.z - 8], [xEnd, y, ground], 3, zincMat);
+        bar(zincRails, [p1 - 3, y, ground], [p1 - 3, y, lv.z - 6], 3, zincMat);
+        bar(zincRails, [p0, y, ground], [p0, y, lv.z - 6], 3, zincMat);
+      }
+      const ry = d.y1 + 2;
+      const hAt = (x: number) => (x >= p0 ? lv.z : lv.z + ((ground - lv.z) * (p0 - x)) / (p0 - xEnd));
+      bar(zincRails, [p1, ry, lv.z + 100], [p0, ry, lv.z + 100], 2.2, zincMat);
+      bar(zincRails, [p0, ry, lv.z + 100], [xEnd, ry, ground + 100], 2.2, zincMat);
+      bar(zincRails, [p1 - 2, d.y0, lv.z + 100], [p1 - 2, ry, lv.z + 100], 2.2, zincMat);
+      for (let x = p1 - 2; x > xEnd; x -= 20) bar(zincRails, [x, ry, hAt(x)], [x, ry, hAt(x) + 100], 0.8, zincMat);
+      bar(zincRails, [xEnd, ry, ground], [xEnd, ry, ground + 100], 2, zincMat);
+      cb.add(xEnd, ry - 2, p1, ry + 2, ground, lv.z + 100); // zábradlí jako zábrana
+    }
     if (lv.id === 'S') gb.add(395, 1400, STAIR_FRONT.x0, 1455, -42, -34); // zelená stříška nad vraty
     if (lv.id === 'P' || lv.id === '1P') pb.add(BALCONY[0], BALCONY[1], BALCONY[2], BALCONY[3], lv.z - 20, lv.z);
     // garáž: zvýšená podlaha + sjezd z ulice s opěrnými zídkami
@@ -491,6 +557,12 @@ export function buildHouse(scene: THREE.Scene) {
         const top = pz + ((lv.z - pz) * (i + 1)) / (st.n + 1);
         sb.add(st.x0 + st.run * i, st.y0, st.x0 + st.run * (i + 1), st.y1, pz - 30, top);
       }
+      // schody ve skladu nahoru ke dveřím kotelny
+      const bs = SKLAD_PIT.boilerSteps;
+      for (let i = 0; i < bs.n; i++) {
+        const top = lv.z - ((lv.z - pz) * i) / bs.n;
+        sb.add(bs.x1 - bs.run * (i + 1), bs.y0, bs.x1 - bs.run * i, bs.y1, pz - 30, top);
+      }
       // boky schodové jámy v chodbě
       wb.add(st.x0, st.y0 - 2, st.x0 + st.run * st.n, st.y0, pz - 30, lv.z);
       wb.add(st.x0, st.y1, st.x0 + st.run * st.n, st.y1 + 2, pz - 30, lv.z);
@@ -501,14 +573,14 @@ export function buildHouse(scene: THREE.Scene) {
         const body = new THREE.Mesh(new THREE.BoxGeometry(M(b.x1 - b.x0), M(b.h), M(b.y1 - b.y0)), frameMat);
         body.position.set(M((b.x0 + b.x1) / 2), M(z0 + b.h / 2), M((b.y0 + b.y1) / 2));
         const panel = new THREE.Mesh(new THREE.BoxGeometry(M(30), M(12), M(1)), track(new THREE.MeshStandardMaterial({ color: '#3a3f44' })));
-        panel.position.set(M((b.x0 + b.x1) / 2), M(z0 + b.h - 15), M(b.y1 + 0.6));
+        panel.position.set(M(b.x0 - 0.6), M(z0 + b.h - 15), M((b.y0 + b.y1) / 2));
+        panel.rotation.y = Math.PI / 2;
         const flueMat = track(new THREE.MeshStandardMaterial({ color: '#9aa0a6', metalness: 0.7, roughness: 0.35 }));
-        const up = new THREE.Mesh(new THREE.CylinderGeometry(M(7), M(7), M(80), 16), flueMat);
-        up.position.set(M((b.x0 + b.x1) / 2), M(z0 + b.h + 40), M((b.y0 + b.y1) / 2));
-        const across = new THREE.Mesh(new THREE.CylinderGeometry(M(7), M(7), M((b.y0 + b.y1) / 2 - 45), 16), flueMat);
-        across.rotation.x = Math.PI / 2;
-        across.position.set(M((b.x0 + b.x1) / 2), M(z0 + b.h + 80), M(((b.y0 + b.y1) / 2 + 45) / 2));
-        for (const m of [body, panel, up, across]) { m.castShadow = true; m.receiveShadow = true; g.add(m); }
+        // kouřovod rovně nahoru do komínového průduchu
+        const flueH = 300 - 30 - b.h;
+        const up = new THREE.Mesh(new THREE.CylinderGeometry(M(7), M(7), M(flueH), 16), flueMat);
+        up.position.set(M((b.x0 + b.x1) / 2), M(z0 + b.h + flueH / 2), M((b.y0 + b.y1) / 2));
+        for (const m of [body, panel, up]) { m.castShadow = true; m.receiveShadow = true; g.add(m); }
         cb.add(b.x0, b.y0, b.x1, b.y1, z0, z0 + b.h);
       }
       const [gx0, gy0, gx1, gy1] = GARAGE.room;
@@ -542,11 +614,13 @@ export function buildHouse(scene: THREE.Scene) {
     addMesh(g, fb.geometry(), frameMat, false);
     const stairs = addMesh(g, sb.geometry(), stairMat);
     const paved = addMesh(g, pb.geometry(), pavedMat);
+    const zinc = addMesh(g, zb.geometry(), zincMat, false);
+    g.add(zincRails);
     addMesh(g, gb.geometry(), greenMat);
     g.add(glass);
 
     // podlahy místností
-    const floors: THREE.Object3D[] = [slab, stairs, paved];
+    const floors: THREE.Object3D[] = [slab, stairs, paved, zinc];
     const labels: CSS2DObject[] = [];
     for (const r of lv.rooms) {
       const [x0, y0, x1, y1] = r.r;
