@@ -116,6 +116,8 @@ export function roofFaces(): RoofFace[] {
   const A: [number, number] = [ROOF.wingRidgeY, ROOF.wingRidgeY]; // vrchol valby křídla
   const V: [number, number] = [350 + ROOF.wingRidgeY / K, ROOF.wingRidgeY]; // konec hřebene křídla / úžlabí
   const Mx = ROOF.hipApexX, My = ROOF.ridgeY;
+  const FRONT_EAVE = STAIR_FRONT.y + 20;
+  const FC: [number, number] = [350 - (FRONT_EAVE - 1400) / K, FRONT_EAVE]; // nárožní roh okapu
   return [
     { name: 'zadní', pts: [[-o, -o], [1100, -o], [1100, My], [Mx, My], V, A], h: (_x, y) => E + S * y },
     {
@@ -123,13 +125,9 @@ export function roofFaces(): RoofFace[] {
       holes: [[[0, DORMER.y0], [DORMER.depth, DORMER.y0], [DORMER.depth, DORMER.y1], [0, DORMER.y1]]],
     },
     { name: 'přední křídla', pts: [[-o, 900 + o], A, V, [350 - oh, 900 + o]], h: (_x, y) => E + S * (900 - y) },
-    { name: 'valba hlavní', pts: [[350 - oh, 900 + o], [350 - oh, 1400 + o], [Mx, My], V], h: (x) => E + K * S * (x - 350) },
-    {
-      // nad předsazeným schodištěm je okap posunutý dopředu
-      name: 'uliční',
-      pts: [[350 - oh, 1400 + o], [STAIR_FRONT.x0 - o, 1400 + o], [STAIR_FRONT.x0 - o, STAIR_FRONT.y + o], [1100, STAIR_FRONT.y + o], [1100, My], [Mx, My]],
-      h: (_x, y) => E + S * (1400 - y),
-    },
+    // uliční okap jde rovně až před předsazené schodiště – nad béžovou částí je hluboký podhled
+    { name: 'valba hlavní', pts: [[350 - oh, 900 + o], FC, [Mx, My], V], h: (x) => E + K * S * (x - 350) },
+    { name: 'uliční', pts: [FC, [1100, FRONT_EAVE], [1100, My], [Mx, My]], h: (_x, y) => E + S * (1400 - y) },
   ];
 }
 
@@ -153,7 +151,7 @@ const SILL = { S: 155, P: 80, '1P': 115 } as const;
 // Zadávají se absolutně (cm vůči podlaze přízemí) a rozdělí se do zdí jednotlivých podlaží.
 const STAIR_WINDOWS: [number, number, number, number][] = [
   [870, 1005, 255, 415], // nad mezipodestou přízemí → 1. patro
-  [870, 1005, 560, 630], // nad mezipodestou 1. patro → podkroví (pod střechou)
+  [870, 1005, 545, 630], // nad mezipodestou 1. patro → podkroví (pod střechou)
 ];
 export function stairWindowsFor(levelZ: number, height: number): Opening[] {
   return STAIR_WINDOWS.flatMap(([a, b, z0, z1]) => {

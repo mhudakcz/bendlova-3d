@@ -361,8 +361,27 @@ function buildWall(w: Wall, lv: Level, wb: BoxBuilder, rb: BoxBuilder, fb: BoxBu
   }
 }
 
+/** Pravoúhlý polygon zmenšený o d (cm) dovnitř – hrany desek pak neleží v líci fasády. */
+function insetPoly(pts: [number, number][], d: number): [number, number][] {
+  let area = 0;
+  for (let i = 0; i < pts.length; i++) {
+    const [ax, ay] = pts[i], [bx, by] = pts[(i + 1) % pts.length];
+    area += ax * by - bx * ay;
+  }
+  const sg = area > 0 ? 1 : -1;
+  const normal = (a: [number, number], b: [number, number]) => {
+    const dx = Math.sign(b[0] - a[0]), dy = Math.sign(b[1] - a[1]);
+    return [-dy * sg, dx * sg];
+  };
+  return pts.map((p, i) => {
+    const prev = pts[(i - 1 + pts.length) % pts.length], next = pts[(i + 1) % pts.length];
+    const n1 = normal(prev, p), n2 = normal(p, next);
+    return [p[0] + d * (n1[0] + n2[0]), p[1] + d * (n1[1] + n2[1])];
+  });
+}
+
 function footprintShape(holes: number[][] = []) {
-  const s = new THREE.Shape(FOOTPRINT.map(([x, y]) => new THREE.Vector2(M(x), M(y))));
+  const s = new THREE.Shape(insetPoly(FOOTPRINT, 2).map(([x, y]) => new THREE.Vector2(M(x), M(y))));
   for (const [x0, y0, x1, y1] of holes) {
     s.holes.push(new THREE.Path([
       new THREE.Vector2(M(x0), M(y0)), new THREE.Vector2(M(x0), M(y1)),
@@ -412,7 +431,7 @@ export function buildHouse(scene: THREE.Scene) {
     if (idx > 0) {
       const [hx0, hy0, hx1] = STAIR_HOLE;
       const pts: [number, number][] = [[0, 0], [1100, 0], [1100, STAIR_FRONT.y], [hx1, STAIR_FRONT.y], [hx1, hy0], [hx0, hy0], [hx0, STAIR_FRONT.y], [STAIR_FRONT.x0, STAIR_FRONT.y], [STAIR_FRONT.x0, 1400], [350, 1400], [350, 900], [0, 900]];
-      slabShape = new THREE.Shape(pts.map(([x, y]) => new THREE.Vector2(M(x), M(y))));
+      slabShape = new THREE.Shape(insetPoly(pts, 2).map(([x, y]) => new THREE.Vector2(M(x), M(y))));
     } else slabShape = footprintShape(idx === 0 ? [] : [STAIR_HOLE]);
     const slabG = new THREE.ExtrudeGeometry(slabShape, { depth: 0.3, bevelEnabled: false });
     slabG.rotateX(Math.PI / 2);
