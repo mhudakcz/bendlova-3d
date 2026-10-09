@@ -48,7 +48,7 @@ lamp.visible = false;
 camera.add(lamp);
 scene.add(camera);
 
-const { levels, roof } = buildHouse(scene);
+const { levels, roof, doors } = buildHouse(scene);
 const { context, ground } = buildSurroundings(scene);
 const { colliders: siteColliders, walkables: siteWalkables } = buildSite(scene);
 
@@ -219,7 +219,7 @@ const feet = new THREE.Vector3();
 let vy = 0;
 const keys = new Set<string>();
 const ray = new THREE.Raycaster();
-const wallTargets = [...levels.flatMap((l) => [l.walls, l.rails, l.colliders]), ...siteColliders];
+const wallTargets = [...levels.flatMap((l) => [l.walls, l.rails, l.colliders]), ...siteColliders, ...doors.map((d) => d.leaf)];
 const floorTargets = [...levels.flatMap((l) => l.floors), ground, ...siteWalkables];
 
 function spawnAt(where: string) {
@@ -238,6 +238,7 @@ function spawnAt(where: string) {
 
 function enterWalk(where: string) {
   state.mode = 'walk';
+  document.body.classList.add('walking');
   orbit.enabled = false;
   lamp.visible = true;
   camera.fov = 70;
@@ -253,6 +254,8 @@ function exitWalk() {
   if (state.mode !== 'walk') return;
   state.mode = 'orbit';
   walking = false;
+  document.body.classList.remove('walking');
+  $('#touchHud').hidden = true;
   if (document.pointerLockElement) document.exitPointerLock();
   orbit.enabled = true;
   lamp.visible = false;
@@ -272,6 +275,7 @@ let walking = false;
 function pause() {
   walking = false;
   keys.clear();
+  $('#touchHud').hidden = true;
   $('#crosshair').hidden = true;
   $('#walkPause').hidden = false;
 }
@@ -280,7 +284,9 @@ function resume() {
   (document.activeElement as HTMLElement | null)?.blur?.(); // aby klávesy nestiskly tlačítko v panelu
   $('#walkPause').hidden = true;
   $('#crosshair').hidden = false;
+  if (document.body.classList.contains('touch')) $('#touchHud').hidden = false;
   renderer.domElement.focus();
+  if (isTouch) return;
   try {
     const p = renderer.domElement.requestPointerLock?.() as unknown as Promise<void> | undefined;
     p?.catch?.(() => {});
@@ -305,19 +311,83 @@ function turn(dYaw: number, dPitch: number) {
   look.x = Math.max(-1.5, Math.min(1.5, look.x - dPitch));
   camera.quaternion.setFromEuler(look);
 }
+// ---- dveře: otevřít/zavřít kliknutím, klepnutím nebo klávesou F
+const doorRay = new THREE.Raycaster();
+function tryToggleDoor(ndcX: number, ndcY: number) {
+  doorRay.setFromCamera(new THREE.Vector2(ndcX, ndcY), camera);
+  doorRay.far = state.mode === 'walk' ? 3.5 : 200;
+  const hit = doorRay.intersectObjects(doors.map((d) => d.leaf), false)[0];
+  if (!hit) return false;
+  const d = doors.find((x) => x.leaf === hit.object)!;
+  d.open = !d.open;
+  return true;
+}
+
+// ---- ovládání myší / dotykem
 let dragging = false;
+let downX = 0, downY = 0, downT = 0;
+const touchLast = new Map<number, { x: number; y: number }>();
 renderer.domElement.addEventListener('pointerdown', (e) => {
+  downX = e.clientX; downY = e.clientY; downT = performance.now();
   if (state.mode !== 'walk') return;
   if (!walking) { resume(); return; }
   dragging = true;
+  touchLast.set(e.pointerId, { x: e.clientX, y: e.clientY });
   renderer.domElement.setPointerCapture?.(e.pointerId);
 });
-addEventListener('pointerup', () => (dragging = false));
+addEventListener('pointerup', (e) => {
+  dragging = false;
+  touchLast.delete(e.pointerId);
+  // krátké klepnutí / kliknutí bez tažení = akce (dveře)
+  if (e.target !== renderer.domElement) return;
+  if (Math.hypot(e.clientX - downX, e.clientY - downY) > 8 || performance.now() - downT > 350) return;
+  const locked = document.pointerLockElement === renderer.domElement;
+  if (state.mode === 'walk' && locked) tryToggleDoor(0, 0);
+  else tryToggleDoor((e.clientX / innerWidth) * 2 - 1, -(e.clientY / innerHeight) * 2 + 1);
+});
 renderer.domElement.addEventListener('pointermove', (e) => {
   if (state.mode !== 'walk' || !walking) return;
   const locked = document.pointerLockElement === renderer.domElement;
+  if (e.pointerType === 'touch') {
+    const last = touchLast.get(e.pointerId);
+    if (last) {
+      turn((e.clientX - last.x) * 0.005, (e.clientY - last.y) * 0.005);
+      touchLast.set(e.pointerId, { x: e.clientX, y: e.clientY });
+    }
+    return;
+  }
   if (locked || dragging) turn(e.movementX * 0.0025, e.movementY * 0.0025);
 });
+
+// ---- mobilní joystick pro chůzi
+const isTouch = matchMedia('(pointer: coarse)').matches || 'ontouchstart' in window;
+if (isTouch) document.body.classList.add('touch');
+const joy = { x: 0, y: 0 };
+{
+  const base = $('#joy'), knob = $('#joyKnob');
+  let id = -1;
+  const R = 50;
+  const update = (e: PointerEvent) => {
+    const r = base.getBoundingClientRect();
+    let dx = e.clientX - (r.left + r.width / 2), dy = e.clientY - (r.top + r.height / 2);
+    const l = Math.hypot(dx, dy);
+    if (l > R) { dx = (dx / l) * R; dy = (dy / l) * R; }
+    joy.x = dx / R; joy.y = dy / R;
+    knob.style.transform = `translate(${dx}px, ${dy}px)`;
+  };
+  base.addEventListener('pointerdown', (e) => { id = e.pointerId; base.setPointerCapture(e.pointerId); update(e); e.preventDefault(); });
+  base.addEventListener('pointermove', (e) => { if (e.pointerId === id) update(e); });
+  const end = (e: PointerEvent) => { if (e.pointerId !== id) return; id = -1; joy.x = joy.y = 0; knob.style.transform = ''; };
+  base.addEventListener('pointerup', end);
+  base.addEventListener('pointercancel', end);
+  $('#walkMenu').addEventListener('click', () => pause());
+  $('#doorBtn').addEventListener('click', () => {
+    // nejbližší dveře do 3 m
+    const p = camera.position;
+    const d = doors.map((x) => ({ x, dist: x.leaf.getWorldPosition(new THREE.Vector3()).distanceTo(p) })).sort((a, b) => a.dist - b.dist)[0];
+    if (d && d.dist < 3.5) d.x.open = !d.x.open;
+  });
+}
 
 const WALK_KEYS = ['KeyW', 'KeyA', 'KeyS', 'KeyD', 'ArrowUp', 'ArrowDown', 'ArrowLeft', 'ArrowRight', 'ShiftLeft', 'ShiftRight', 'KeyQ', 'KeyE'];
 addEventListener('keydown', (e) => {
@@ -328,6 +398,7 @@ addEventListener('keydown', (e) => {
   if (!walking) { if (e.code === 'Enter' || e.code === 'Space') resume(); return; }
   if (WALK_KEYS.includes(e.code)) e.preventDefault();
   keys.add(e.code);
+  if (e.code === 'KeyF') tryToggleDoor(0, 0);
   const jump: Record<string, string> = { Digit0: 'street', Digit1: 'S', Digit2: 'P', Digit3: '1P', Digit4: 'A' };
   if (jump[e.code]) spawnAt(jump[e.code]);
 });
@@ -360,12 +431,17 @@ function updateWalk(dt: number) {
   if (keys.has('KeyS') || keys.has('ArrowDown')) { mx -= fwd.x; mz -= fwd.z; }
   if (keys.has('KeyD')) { mx += right.x; mz += right.z; }
   if (keys.has('KeyA')) { mx -= right.x; mz -= right.z; }
+  // joystick (mobil): nahoru = dopředu, do stran = úkrok
+  mx += fwd.x * -joy.y + right.x * joy.x;
+  mz += fwd.z * -joy.y + right.z * joy.x;
+  const joyMag = Math.min(1, Math.hypot(joy.x, joy.y));
   const turnRate = 1.9 * dt;
   if (keys.has('ArrowLeft') || keys.has('KeyQ')) turn(-turnRate, 0);
   if (keys.has('ArrowRight') || keys.has('KeyE')) turn(turnRate, 0);
   const l = Math.hypot(mx, mz);
   if (l > 0) {
-    const speed = (keys.has('ShiftLeft') || keys.has('ShiftRight') ? 3.4 : 1.6) * dt;
+    const analog = joyMag > 0 && !keys.size ? 0.4 + joyMag * 0.9 : 1;
+    const speed = (keys.has('ShiftLeft') || keys.has('ShiftRight') ? 3.4 : 1.6) * analog * dt;
     mx = (mx / l) * speed; mz = (mz / l) * speed;
     if (!blocked(mx, mz)) { feet.x += mx; feet.z += mz; }
     else {
@@ -454,6 +530,11 @@ function loop() {
     }
     orbit.update();
   }
+  for (const d of doors) {
+    const target = d.open ? Math.PI / 2 : 0;
+    d.angle += (target - d.angle) * Math.min(1, dt * 6);
+    d.pivot.rotation.y = d.angle;
+  }
   renderer.render(scene, camera);
   labelRenderer.render(scene, camera);
   requestAnimationFrame(loop);
@@ -468,4 +549,4 @@ addEventListener('resize', () => {
 applyView();
 loop();
 // pro ladění
-Object.assign(window as object, { __app: { scene, camera, state, levels, enterWalk, exitWalk, spawnAt, feet, keys, updateWalk } });
+Object.assign(window as object, { __app: { scene, camera, state, levels, enterWalk, exitWalk, spawnAt, feet, keys, updateWalk, doors, joy } });

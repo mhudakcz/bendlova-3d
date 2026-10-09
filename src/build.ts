@@ -335,6 +335,8 @@ const wallColor = (cx: number, cy: number, nx: number, ny: number) => {
   return COL.plaster;
 };
 
+export type HouseDoor = { pivot: THREE.Group; leaf: THREE.Mesh; open: boolean; angle: number };
+
 export type LevelObj = {
   level: Level;
   group: THREE.Group;
@@ -477,7 +479,10 @@ function buildStairs(z: number, sb: BoxBuilder, wb: BoxBuilder, rails: THREE.Gro
     sb.add(x0, flight[1] - run * (i + 1), split - GAP, flight[1] - run * i, t2 - 30, t2); // rameno B (zpět)
   }
   // mezipodesta; u vstupu (suterén → přízemí) včetně prahu dveří v uliční zdi
-  sb.add(x0, midLanding[0], x1, z < -150 ? STAIR_FRONT.y : midLanding[1], z + 130, z + 150);
+  // (začíná hned za posledním stupněm ramene A – bez mezery)
+  sb.add(x0, flight[0] + run * n, x1, z < -150 ? STAIR_FRONT.y : midLanding[1], z + 130, z + 150);
+  // horní nášlap ramene B v úrovni dalšího podlaží (navazuje na podestu před bytem)
+  sb.add(x0, flight[0], split - GAP, flight[0] + run + 1, z + 280, z + 300);
   if (z < -150) {
     // mezi suterénem a přízemím je mezi rameny zeď
     wb.add(split - GAP, flight[0], split + GAP, flight[1], z, z + 300);
@@ -639,7 +644,7 @@ export function buildHouse(scene: THREE.Scene) {
     g.add(colliders);
 
     const walls = addMesh(g, wb.geometry(), wallMat);
-    const rails = addMesh(g, rb.geometry(), railMat);
+    const rails = addMesh(g, rb.geometry(), railMat, false); // bez výplně řezu – pletivo je průhledné
     addMesh(g, fb.geometry(), frameMat, false);
     const stairs = addMesh(g, sb.geometry(), stairMat);
     const paved = addMesh(g, pb.geometry(), pavedMat);
@@ -757,7 +762,27 @@ export function buildHouse(scene: THREE.Scene) {
   addMesh(roof, cb.geometry(), chimneyMat).material = track(new THREE.MeshStandardMaterial({ vertexColors: true, roughness: 0.9 }));
   house.add(roof);
 
-  return { house, levels, roof };
+  // vchodové dveře (otevíratelné) – v předsazené uliční zdi, otevírají se dovnitř
+  const doors: HouseDoor[] = [];
+  {
+    const a = 880, b = 975, zb = TERRAIN_Z, h = 220, yIn = STAIR_FRONT.y - STAIR_FRONT.t + 4;
+    const pivot = new THREE.Group();
+    pivot.position.set(M(a + 2), M(zb), M(yIn));
+    const leafMat = track(new THREE.MeshStandardMaterial({ color: '#4b3326', roughness: 0.6 }));
+    const leaf = new THREE.Mesh(new THREE.BoxGeometry(M(b - a - 4), M(h), M(5)), leafMat);
+    leaf.position.set(M((b - a - 4) / 2), M(h / 2), 0);
+    leaf.castShadow = leaf.receiveShadow = true;
+    const glassPane = new THREE.Mesh(new THREE.BoxGeometry(M(50), M(110), M(6)), glassMat);
+    glassPane.position.set(M((b - a - 4) / 2), M(140), 0);
+    glassPane.raycast = () => {};
+    const handle = new THREE.Mesh(new THREE.BoxGeometry(M(14), M(3), M(12)), track(new THREE.MeshStandardMaterial({ color: '#c9c9c9', metalness: 0.8, roughness: 0.3 })));
+    handle.position.set(M(b - a - 14), M(105), 0);
+    handle.raycast = () => {};
+    pivot.add(leaf, glassPane, handle);
+    levels[0].group.add(pivot);
+    doors.push({ pivot, leaf, open: false, angle: 0 });
+  }
+  return { house, levels, roof, doors };
 }
 
 // ---------------------------------------------------------------- okolí (OpenStreetMap)

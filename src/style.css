@@ -103,3 +103,22 @@ kbd { font-family: var(--mono); font-size: 11px; background: rgba(255,255,255,.9
   .plans-inner { grid-template-columns: 1fr; grid-template-rows: auto 1fr; }
   #planList { flex-direction: row; border-right: 0; border-bottom: 1px solid var(--line); overflow-x: auto; }
 }
+
+/* mobilní ovládání procházení */
+#touchHud[hidden] { display: none; }
+#touchHud { position: fixed; inset: 0; z-index: 6; pointer-events: none; }
+#joy { position: absolute; left: 24px; bottom: 28px; width: 130px; height: 130px; border-radius: 50%;
+  background: rgba(243, 236, 223, .35); border: 2px solid rgba(255,255,255,.7); pointer-events: auto; touch-action: none;
+  display: grid; place-items: center; backdrop-filter: blur(2px); }
+#joyKnob { width: 56px; height: 56px; border-radius: 50%; background: rgba(43, 38, 32, .75); box-shadow: 0 2px 8px rgba(0,0,0,.3); }
+.touch-btns { position: absolute; right: 16px; top: 16px; display: flex; gap: 8px; pointer-events: auto; }
+.touch-btns button { border: 1px solid var(--line); background: var(--paper); border-radius: 4px; padding: 9px 14px; font-weight: 600; font-size: 14px; }
+.touch-hint { position: absolute; left: 0; right: 0; bottom: 6px; text-align: center; font-size: 11px; color: #fff; text-shadow: 0 1px 3px rgba(0,0,0,.6); }
+body.touch .keys { display: none; }
+body.touch #crosshair { display: none; }
+body.touch #walkHud { top: 64px; bottom: auto; right: 12px; }
+body.touch #minimap { width: 130px; height: 165px; }
+body.touch .whereami { font-size: 16px; }
+#app canvas { touch-action: none; }
+
+body.walking #panelToggle { display: none; }
