@@ -16,7 +16,8 @@ const $ = <T extends HTMLElement = HTMLElement>(s: string) => document.querySele
 
 // ------------------------------------------------------------------ scéna
 const app = $('#app');
-const renderer = new THREE.WebGLRenderer({ antialias: true });
+// logaritmický hloubkový buffer: přesné vykreslení tenkých vrstev (silnice, chodníky) i při velkém dohledu
+const renderer = new THREE.WebGLRenderer({ antialias: true, logarithmicDepthBuffer: true });
 renderer.setPixelRatio(Math.min(devicePixelRatio, 2));
 renderer.setSize(innerWidth, innerHeight);
 renderer.shadowMap.enabled = true;
@@ -241,7 +242,7 @@ let vy = 0;
 const keys = new Set<string>();
 const ray = new THREE.Raycaster();
 const wallTargets = [...levels.flatMap((l) => [l.walls, l.rails, l.colliders]), ...siteColliders, ...buildingColliders, ...doors.flatMap((d) => d.parts)];
-const floorTargets = [...levels.flatMap((l) => l.floors), ground, ...siteWalkables];
+const floorTargets = [...levels.flatMap((l) => l.floors), ...ground, ...siteWalkables];
 // BVH pro rychlé kolize s velkými sloučenými meshi (okolí ~500 m)
 for (const o of [...wallTargets, ...floorTargets]) {
   const m = o as THREE.Mesh;

@@ -3,6 +3,7 @@
 import * as THREE from 'three';
 import { TERRAIN_Z } from './house';
 import { OSM } from './osm';
+import { densify, liftToTerrain, terrainY } from './terrain';
 import { mergeGeometries } from 'three/examples/jsm/utils/BufferGeometryUtils.js';
 import { Door, makeLeaf } from './doors';
 
@@ -285,7 +286,7 @@ export function buildSite(scene: THREE.Scene) {
     residential: ROAD_W, unclassified: ROAD_W, living_street: 5, service: 3.5, track: 3,
   };
   const WITH_WALK = new Set(['trunk', 'primary', 'secondary', 'tertiary', 'residential', 'unclassified', 'living_street']);
-  const roads = ctx.roads.filter((r) => WIDTH[r.kind] !== undefined && r.pts.length > 1);
+  const roads = ctx.roads.filter((r) => WIDTH[r.kind] !== undefined && r.pts.length > 1).map((r) => ({ ...r, pts: densify(r.pts as Pt[], 6) }));
   // park = vnitřek smyčky ulice před domem (nejbližší silnice k uličnímu plotu)
   const distHouse = (r: { pts: Pt[] }) => Math.min(...r.pts.map((t) => Math.hypot(t[0] - 7, t[1] - 22)));
   const loop = roads.filter((r) => r.kind === 'residential').sort((p, q) => distHouse(p) - distHouse(q))[0];
@@ -315,7 +316,7 @@ export function buildSite(scene: THREE.Scene) {
     const W = WIDTH[r.kind];
     const closed = Math.hypot(r.pts[0][0] - r.pts.at(-1)![0], r.pts[0][1] - r.pts.at(-1)![1]) < 0.5;
     const near = distHouse(r) < 70; // u domu skutečné obrubníky, dál ploché chodníky (čisté křižovatky)
-    const asphaltY = near ? G + 0.01 : G + 0.03;
+    const asphaltY = near ? G + 0.01 : G + 0.1; // dál od domu nad terénem (mřížka terénu je hrubší)
     put(asphaltMat, strip(r.pts, -W / 2, W / 2, asphaltY, closed, ar));
     if (!WITH_WALK.has(r.kind)) continue;
     for (const side of [-1, 1]) {
@@ -329,7 +330,7 @@ export function buildSite(scene: THREE.Scene) {
           put(hedgeMat, strip(run.pts, Math.min(h0, h1), Math.max(h0, h1), G + HEDGE_H, false, 1, HEDGE_H));
         } else {
           const o1 = side * (W / 2 + WALK_W);
-          put(paverMat, strip(run.pts, Math.min(o0, o1), Math.max(o0, o1), near ? G + CURB : G + 0.02, false, pr, near ? CURB : 0));
+          put(paverMat, strip(run.pts, Math.min(o0, o1), Math.max(o0, o1), near ? G + CURB : G + 0.07, false, pr, near ? CURB : 0));
         }
       }
     }
@@ -342,8 +343,9 @@ export function buildSite(scene: THREE.Scene) {
     const t = Math.max(0, Math.min(1, ((p[0] - q[0]) * dx + (p[1] - q[1]) * dy) / l2));
     return Math.hypot(p[0] - q[0] - dx * t, p[1] - q[1] - dy * t) < w / 2 + WALK_W + 1.5;
   });
-  for (const r of ctx.roads) {
-    if (!['footway', 'pedestrian', 'path', 'steps', 'cycleway'].includes(r.kind)) continue;
+  for (const r0 of ctx.roads) {
+    if (!['footway', 'pedestrian', 'path', 'steps', 'cycleway'].includes(r0.kind)) continue;
+    const r = { ...r0, pts: densify(r0.pts as Pt[], 6) };
     const segs: Pt[][] = [];
     let cur: Pt[] = [];
     for (const p of r.pts) {
@@ -351,10 +353,12 @@ export function buildSite(scene: THREE.Scene) {
     }
     if (cur.length > 1) segs.push(cur);
     const w = r.kind === 'pedestrian' ? 3 : r.kind === 'path' ? 1.4 : 1.8;
-    for (const sg of segs) put(paverMat, strip(sg, -w / 2, w / 2, G + 0.025, false, pr));
+    for (const sg of segs) put(paverMat, strip(sg, -w / 2, w / 2, G + 0.06, false, pr));
   }
   for (const [m, gs] of bucket) {
     const merged = mergeGeometries(gs, false);
+    liftToTerrain(merged.attributes.position as THREE.BufferAttribute);
+    merged.computeVertexNormals();
     const mesh = new THREE.Mesh(merged, m);
     mesh.receiveShadow = true;
     mesh.castShadow = m === hedgeMat;
