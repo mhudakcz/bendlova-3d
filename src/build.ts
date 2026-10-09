@@ -605,8 +605,8 @@ export function buildSurroundings(scene: THREE.Scene) {
   gg.rotateX(Math.PI / 2);
   const groundMat = new THREE.MeshStandardMaterial({
     map: canvasTex((g, s) => {
-      g.fillStyle = '#8fa070'; g.fillRect(0, 0, s, s);
-      noise(g, s, 26);
+      g.fillStyle = '#8a9c6c'; g.fillRect(0, 0, s, s);
+      noise(g, s, 7);
     }),
     roughness: 1,
   });
@@ -619,29 +619,6 @@ export function buildSurroundings(scene: THREE.Scene) {
   groundMesh.position.y = M(TERRAIN_Z);
   groundMesh.receiveShadow = true;
   scene.add(groundMesh);
-
-  // silnice a chodníky
-  const roadMat = new THREE.MeshStandardMaterial({ color: '#7d7b78', roughness: 1 });
-  const walkMat = new THREE.MeshStandardMaterial({ color: '#b6aea2', roughness: 1 });
-  for (const r of ctx.roads) {
-    const w = r.kind === 'footway' || r.kind === 'pedestrian' ? 1.8 : 6;
-    const pos: number[] = [];
-    for (let i = 0; i < r.pts.length - 1; i++) {
-      const [ax, ay] = r.pts[i], [bx, by] = r.pts[i + 1];
-      const dx = bx - ax, dy = by - ay, L = Math.hypot(dx, dy) || 1;
-      const nx = (-dy / L) * w / 2, ny = (dx / L) * w / 2;
-      const a1 = [ax + nx, ay + ny], a2 = [ax - nx, ay - ny], b1 = [bx + nx, by + ny], b2 = [bx - nx, by - ny];
-      for (const p of [a1, b1, b2, a1, b2, a2]) pos.push(p[0], 0, p[1]);
-    }
-    const g = new THREE.BufferGeometry();
-    g.setAttribute('position', new THREE.Float32BufferAttribute(pos, 3));
-    g.computeVertexNormals();
-    const m = new THREE.Mesh(g, w > 3 ? roadMat : walkMat);
-    m.material.side = THREE.DoubleSide;
-    m.position.y = M(TERRAIN_Z) + (w > 3 ? 0.02 : 0.015);
-    m.receiveShadow = true;
-    group.add(m);
-  }
 
   // okolní budovy
   const bMat = new THREE.MeshStandardMaterial({ color: '#e4ddd0', roughness: 0.95 });

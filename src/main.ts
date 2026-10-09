@@ -2,6 +2,7 @@ import * as THREE from 'three';
 import { OrbitControls } from 'three/examples/jsm/controls/OrbitControls.js';
 import { CSS2DRenderer } from 'three/examples/jsm/renderers/CSS2DRenderer.js';
 import { buildHouse, buildSurroundings, setClipping } from './build';
+import { buildSite } from './site';
 import { LEVELS, STREET_SPAWN, TERRAIN_Z } from './house';
 import './style.css';
 
@@ -48,6 +49,7 @@ scene.add(camera);
 
 const { levels, roof } = buildHouse(scene);
 const { context, ground } = buildSurroundings(scene);
+const { colliders: siteColliders, walkables: siteWalkables } = buildSite(scene);
 
 // ------------------------------------------------------------------ stav
 type FloorId = 'all' | 'S' | 'P' | '1P' | 'A';
@@ -197,8 +199,8 @@ const feet = new THREE.Vector3();
 let vy = 0;
 const keys = new Set<string>();
 const ray = new THREE.Raycaster();
-const wallTargets = levels.flatMap((l) => [l.walls, l.rails]);
-const floorTargets = [...levels.flatMap((l) => l.floors), ground];
+const wallTargets = [...levels.flatMap((l) => [l.walls, l.rails]), ...siteColliders];
+const floorTargets = [...levels.flatMap((l) => l.floors), ground, ...siteWalkables];
 
 function spawnAt(where: string) {
   vy = 0;
@@ -378,7 +380,8 @@ function currentLevel() {
 }
 function drawMinimap() {
   const lv = currentLevel();
-  $('#whereami').textContent = feet.y < -1.4 && feet.z > 14 ? 'Ulice Bendlova' : lv.name;
+  const outside = feet.x < 0 || feet.x > 11 || feet.z < 0 || feet.z > 15.3 || (feet.x < 3.5 && feet.z > 9);
+  $('#whereami').textContent = !outside ? lv.name : feet.z > 18.8 ? 'Ulice Bendlova' : feet.z > 11 ? 'Předzahrádka' : 'Zahrada';
   const pad = 14, s = (mm.width - pad * 2) / 1100;
   mg.clearRect(0, 0, mm.width, mm.height);
   mg.save();

@@ -319,4 +319,4 @@ export const LEVELS: Level[] = [
 ];
 
 export const TERRAIN_Z = -150; // úroveň chodníku / vstupu
-export const STREET_SPAWN: [number, number] = [925, 1750];
+export const STREET_SPAWN: [number, number] = [925, 2000]; // chodník před brankou
