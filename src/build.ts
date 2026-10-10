@@ -627,7 +627,7 @@ export function buildHouse(scene: THREE.Scene) {
       wb.add(st.x0 + st.run * st.n, st.y0, st.x0 + st.run * st.n + 2, st.y1, pz - 30, lv.z);
       // kotel s kouřovodem
       {
-        const b = BOILER, z0 = lv.z;
+        const b = BOILER, z0 = lv.z + b.z; // spodní hrana kotle
         const body = new THREE.Mesh(new THREE.BoxGeometry(M(b.x1 - b.x0), M(b.h), M(b.y1 - b.y0)), frameMat);
         body.position.set(M((b.x0 + b.x1) / 2), M(z0 + b.h / 2), M((b.y0 + b.y1) / 2));
         const panel = new THREE.Mesh(new THREE.BoxGeometry(M(30), M(12), M(1)), track(new THREE.MeshStandardMaterial({ color: '#3a3f44' })));
@@ -635,7 +635,7 @@ export function buildHouse(scene: THREE.Scene) {
         panel.rotation.y = Math.PI / 2;
         const flueMat = track(new THREE.MeshStandardMaterial({ color: '#9aa0a6', metalness: 0.7, roughness: 0.35 }));
         // kouřovod rovně nahoru do komínového průduchu
-        const flueH = 300 - 30 - b.h;
+        const flueH = 300 - 30 - b.h - b.z;
         const up = new THREE.Mesh(new THREE.CylinderGeometry(M(7), M(7), M(flueH), 16), flueMat);
         up.position.set(M((b.x0 + b.x1) / 2), M(z0 + b.h + flueH / 2), M((b.y0 + b.y1) / 2));
         for (const m of [body, panel, up]) { m.castShadow = true; m.receiveShadow = true; g.add(m); }
@@ -783,8 +783,10 @@ export function buildHouse(scene: THREE.Scene) {
   const cb = new BoxBuilder(() => new THREE.Color('#d8c7a6'));
   // komíny v podkroví podle výkresu krovu (u stěn, ne uprostřed předsíně)
   for (const [x0, y0, x1, y1] of [[515, 800, 595, 830], [880, 610, 970, 650], [780, 200, 815, 265]]) {
+    // komín jen nad střechou (v podkroví ho v cestě nemáme)
+    const rmin = Math.min(roofHeight(x0, y0), roofHeight(x1, y0), roofHeight(x1, y1), roofHeight(x0, y1));
     const top = Math.max(roofHeight(x0, y0), roofHeight(x1, y0), roofHeight(x1, y1), roofHeight(x0, y1)) + 110;
-    cb.add(x0, y0, x1, y1, 600, top);
+    cb.add(x0, y0, x1, y1, rmin - 15, top);
   }
   addMesh(roof, cb.geometry(), chimneyMat).material = track(new THREE.MeshStandardMaterial({ vertexColors: true, roughness: 0.9 }));
   house.add(roof);

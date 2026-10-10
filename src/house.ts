@@ -105,9 +105,9 @@ const K = ROOF.ridgeY / (ROOF.hipApexX - 350); // valba hlavní střechy je strm
 // Vikýř pokoje v podkroví na nižší valbě (pohled přední, krov: okno 225/80)
 export const DORMER = {
   y0: 290, y1: 585, // včetně bočnic
-  depth: 205, // hloubka vikýře (výklenek pokoje podle krovu), stříška se zde potká s valbou
-  z0: 858, // výška stříšky nad líc fasády (cm vůči podlaze přízemí)
-  slope: 0.06,
+  depth: 225, // hloubka vikýře (výklenek pokoje podle krovu), stříška se zde potká s valbou
+  z0: 868, // výška stříšky nad líc fasády (cm vůči podlaze přízemí)
+  slope: 0.073,
 };
 export const dormerRoofZ = (x: number) => DORMER.z0 + DORMER.slope * x;
 const inDormer = (x: number, y: number) => x < DORMER.depth && y > DORMER.y0 && y < DORMER.y1;
@@ -271,7 +271,7 @@ function flatRooms(level: 'P' | '1P'): Room[] {
 
 // ---------- Suterén ----------
 // Kotel ve skladu 4,5 m² (x 610–785, y 45–300), odtah do komína
-export const BOILER = { x0: 725, y0: 190, x1: 785, y1: 250, h: 90 }; // u zdi s prádelnou
+export const BOILER = { x0: 745, y0: 190, x1: 785, y1: 235, h: 75, z: 100 }; // závěsný kotel na zdi s prádelnou, ~1 m nad podlahou
 
 // Velký sklad v suterénu je zapuštěný o 50 cm níž, z chodby do něj vedou schody dolů.
 export const SKLAD_PIT = {
@@ -309,7 +309,7 @@ const basementRooms: Room[] = [
 const BIG = 600;
 const atticWalls: Wall[] = [
   { r: [0, 0, 1100, 45], h: BIG },
-  { r: [0, 45, 45, 900], h: BIG, o: [win(325, 550, 172, 76)] }, // trojdílné okno ve vikýři (225/80)
+  { r: [0, 45, 45, 900], h: BIG, o: [win(325, 550, 105, 135)] }, // trojdílné okno ve vikýři
   // bočnice vikýře
   { r: [0, DORMER.y0, DORMER.depth, DORMER.y0 + 15], h: BIG },
   { r: [0, DORMER.y1 - 15, DORMER.depth, DORMER.y1], h: BIG },
@@ -329,9 +329,10 @@ const atticWalls: Wall[] = [
   { r: [770, 160, 780, 440], h: BIG },
   { r: [515, 430, 780, 440], h: BIG, o: [door(560, 640)] },
   // předsíň
-  { r: [860, 435, 875, 770], h: BIG, o: [door(520, 600)] }, // na půdu vpravo
+  { r: [860, 435, 875, 770], h: BIG }, // předsíň | půda vpravo (bez dveří)
   { r: [780, 435, 860, 445], h: BIG }, // předsíň | půda
-  { r: [515, 830, 830, 840], h: BIG, o: [door(700, 780)] }, // na přední půdu
+  { r: [515, 830, 830, 840], h: BIG }, // předsíň | přední půda (bez dveří)
+  { r: [875, 700, 1070, 715], h: BIG, o: [door(960, 1040)] }, // půda u souseda | podesta schodiště, dveře z podesty
   { r: [830, 830, 860, SF_IN], h: BIG }, // bok schodiště – od předsíně je průchod na podestu
   // zábradlí kolem otvoru schodiště
   { r: [975, 975, 1070, 983], h: 100, kind: 'railing', rail: 'bars' }, // zábradlí nad ramenem pod podestou podkroví
@@ -341,7 +342,8 @@ const atticRooms: Room[] = [
   { name: '', r: [45, DORMER.y0, 195, DORMER.y1], floor: 'wood' }, // výklenek vikýře
   { name: 'Koupelna', r: [515, 160, 770, 430], floor: 'tile' },
   { name: 'Předsíň', r: [515, 440, 860, 830], floor: 'wood' },
-  { name: 'Půda', r: [875, 45, 1070, 770], floor: 'concrete' },
+  { name: 'Půda', r: [875, 45, 1070, 700], floor: 'concrete' },
+  { name: '', r: [875, 715, 1070, 770], floor: 'terrazzo' }, // podesta před dveřmi na půdu
   { name: 'Půda', r: [45, 45, 870, 150], floor: 'concrete' },
   { name: '', r: [45, 150, 185, DORMER.y0], floor: 'concrete' },
   { name: '', r: [45, DORMER.y1, 195, 900], floor: 'concrete' },
