@@ -36,7 +36,9 @@ export type FloorType =
   | 'terrazzo' // kamenitá podlaha
   | 'tile'
   | 'concrete'
-  | 'stone';
+  | 'stone'
+  | 'deck' // dřevěné čtvercové dlaždice (balkon v přízemí)
+  | 'greenPaint'; // zeleně natřená podlaha (balkon v 1. patře)
 
 // Garáž v suterénu pod obývákem – vjezd z ulice po sjezdu do vyhloubení
 export const GARAGE = {
@@ -265,7 +267,7 @@ function flatRooms(level: 'P' | '1P'): Room[] {
     { name: 'Komora', r: [970, 665, 1070, 760], floor: room },
     { name: 'Obývací pokoj', r: [395, 770, 830, 1355], floor: room },
     { name: 'Schodiště', r: [860, 770, 1070, 975], floor: 'terrazzo' },
-    { name: 'Balkon', r: BALCONY, floor: 'stone' },
+    { name: 'Balkon', r: BALCONY, floor: P ? 'deck' : 'greenPaint' },
   ];
 }
 

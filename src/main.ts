@@ -507,7 +507,7 @@ function updateWalk(dt: number) {
 const mm = $('#minimap') as HTMLCanvasElement;
 const mg = mm.getContext('2d')!;
 const FLOOR_COL: Record<string, string> = {
-  wood: '#e4c9a3', tile: '#dfe3e2', stone: '#d6c8b4', concrete: '#cfcac1',
+  wood: '#e4c9a3', tile: '#dfe3e2', stone: '#d6c8b4', concrete: '#cfcac1', deck: '#b8916a', greenPaint: '#86a88f',
   carpet: '#c9bca8', linoleum: '#c9cfbe', brownTile: '#9a7560', terrazzo: '#d4cfc6',
 };
 function currentLevel() {
@@ -592,6 +592,7 @@ function loop() {
     const target = d.open ? d.openAngle : 0;
     d.angle += (target - d.angle) * Math.min(1, dt * 6);
     d.pivot.rotation.y = (d.base ?? 0) + d.angle;
+    if (d.fold) d.fold.rotation.y = -2 * d.angle * (d.foldSign ?? 1); // druhý segment se sklopí zpět (harmonika)
   }
   renderer.render(scene, camera);
   labelRenderer.render(scene, camera);

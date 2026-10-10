@@ -15,7 +15,7 @@ const MONO = "font-family=\"IBM Plex Mono, Consolas, monospace\"";
 
 const FLOOR_NAME: Record<string, string> = {
   wood: 'plovoucí podlaha', carpet: 'koberec', linoleum: 'linoleum', brownTile: 'dlažba',
-  terrazzo: 'teraco', tile: 'dlažba', concrete: 'beton', stone: 'dlažba',
+  terrazzo: 'teraco', tile: 'dlažba', concrete: 'beton', stone: 'dlažba', deck: 'dřevěné dlaždice', greenPaint: 'natřeno zeleně',
 };
 const fmt = (v: number, d = 2) => v.toFixed(d).replace('.', ',');
 const esc = (t: string) => t.replace(/&/g, '&amp;').replace(/</g, '&lt;');
@@ -150,7 +150,7 @@ export function levelDrawing(lv: Level): string {
   body += `<polygon points="${fp}" fill="#fbf8f1" stroke="none"/>`;
 
   // plochy místností (jemně podle podlahy)
-  const tint: Record<string, string> = { wood: '#f3e4cc', carpet: '#ece4d6', linoleum: '#e4eadc', brownTile: '#e8d6c8', terrazzo: '#ebe7e0', tile: '#e8ecec', concrete: '#ece9e3', stone: '#ece4d8' };
+  const tint: Record<string, string> = { wood: '#f3e4cc', carpet: '#ece4d6', linoleum: '#e4eadc', brownTile: '#e8d6c8', terrazzo: '#ebe7e0', tile: '#e8ecec', concrete: '#ece9e3', stone: '#ece4d8', deck: '#e8d2b4', greenPaint: '#d5e2d6' };
   for (const r of lv.rooms) {
     const [x0, y0, x1, y1] = r.r;
     body += `<rect x="${x0}" y="${y0}" width="${x1 - x0}" height="${y1 - y0}" fill="${tint[r.floor] ?? '#f2eee6'}"/>`;

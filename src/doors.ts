@@ -9,6 +9,8 @@ export type Door = {
   openAngle: number; // úhel otevření (rad), znaménko určuje směr
   link: string; // křídla se stejným link se otevírají společně
   base?: number; // výchozí natočení (např. plot není přesně v ose)
+  fold?: THREE.Group; // skládací (harmonika): druhý segment na pantu, natáčí se opačně
+  foldSign?: number;
 };
 
 /**

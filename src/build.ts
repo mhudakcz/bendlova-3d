@@ -184,6 +184,25 @@ const floorTex = {
     }
     noise(g, s, 6);
   }),
+  deck: canvasTex((g, s) => {
+    // dřevěné dlaždice 40 × 40 cm (4 na texturu), každá ze 4 lamel, směr se střídá
+    const n = 4, t = s / n;
+    g.fillStyle = '#4a3324'; g.fillRect(0, 0, s, s);
+    for (let i = 0; i < n; i++) for (let j = 0; j < n; j++) {
+      const horiz = (i + j) % 2 === 0;
+      for (let k = 0; k < 4; k++) {
+        g.fillStyle = `hsl(${24 + Math.random() * 6},${38 + Math.random() * 10}%,${36 + Math.random() * 8}%)`;
+        const w = t / 4;
+        if (horiz) g.fillRect(i * t + 1, j * t + k * w + 1, t - 2, w - 2);
+        else g.fillRect(i * t + k * w + 1, j * t + 1, w - 2, t - 2);
+      }
+    }
+    noise(g, s, 10);
+  }),
+  greenPaint: canvasTex((g, s) => {
+    g.fillStyle = '#4f7d5c'; g.fillRect(0, 0, s, s);
+    noise(g, s, 8);
+  }),
   concrete: canvasTex((g, s) => {
     g.fillStyle = '#a9a69f'; g.fillRect(0, 0, s, s);
     noise(g, s, 30);
@@ -195,7 +214,7 @@ const floorMats = Object.fromEntries(
 stairMat = track(new THREE.MeshStandardMaterial({ map: floorTex.terrazzo.clone(), roughness: 0.55 }));
 stairMat.map!.repeat.set(1.3, 1.3);
 stairMat.map!.needsUpdate = true;
-const floorRepeat = { wood: 1.6, tile: 1.2, stone: 0.8, concrete: 0.4, carpet: 1, linoleum: 0.6, brownTile: 1.25, terrazzo: 1.3 };
+const floorRepeat = { wood: 1.6, tile: 1.2, stone: 0.8, concrete: 0.4, carpet: 1, linoleum: 0.6, brownTile: 1.25, terrazzo: 1.3, deck: 1 / 1.6, greenPaint: 0.5 };
 
 // bílý obklad 15 × 15 cm
 const wallTileTex = canvasTex((g, s) => {
@@ -811,17 +830,32 @@ export function buildHouse(scene: THREE.Scene) {
       return [leaf];
     }, Math.PI / 2, 'vchod'));
   }
-  // dvoukřídlá vrata garáže – otevírají se ven na sjezd
+  // vrata garáže: 4 segmenty, každá polovina se skládá jako harmonika (2 segmenty na pantu), ven na sjezd
   {
     const [g0, g1] = GARAGE.gate, gm = (g0 + g1) / 2, zb = -300 + GARAGE.floor, h = 300 - GARAGE.floor - 40;
     const y = M(1377);
-    const build = (hd: THREE.Group, w: number) => {
+    let fold: THREE.Group | null = null;
+    const segment = (hd: THREE.Object3D, w: number) => {
       const leaf = box(hd, w - M(1), M(h), M(5), w / 2, M(h / 2), garageDoorMat);
-      for (const k of [0.33, 0.66]) { const r = box(hd, w - M(6), M(4), M(7), w / 2, M(h) * k, garageDoorMat); r.raycast = () => {}; }
-      return [leaf];
+      for (const k of [0.25, 0.5, 0.75]) { const r = box(hd, w - M(6), M(3), M(7), w / 2, M(h) * k, garageDoorMat); r.raycast = () => {}; }
+      return leaf;
     };
-    doors.push(makeLeaf(levels[0].group, [M(g0), M(zb), y], M(gm - g0), build, -Math.PI / 2, 'garaz'));
-    doors.push(makeLeaf(levels[0].group, [M(g1), M(zb), y], M(g1 - gm), build, Math.PI / 2, 'garaz', Math.PI));
+    const build = (hd: THREE.Group, w: number) => {
+      const half = w / 2;
+      const p1 = segment(hd, half);
+      fold = new THREE.Group();
+      fold.position.x = half; // pant mezi segmenty
+      hd.add(fold);
+      const p2 = segment(fold, half);
+      return [p1, p2];
+    };
+    const left = makeLeaf(levels[0].group, [M(g0), M(zb), y], M(gm - g0), build, -Math.PI / 2, 'garaz');
+    left.fold = fold!;
+    left.foldSign = 1;
+    const right = makeLeaf(levels[0].group, [M(g1), M(zb), y], M(g1 - gm), build, Math.PI / 2, 'garaz', Math.PI);
+    right.fold = fold!;
+    right.foldSign = 1;
+    doors.push(left, right);
   }
   // balkonové dveře – francouzská okna (přízemí a 1. patro), otevírají se dovnitř
   for (const lv of levels.filter((l) => l.level.id === 'P' || l.level.id === '1P')) {
@@ -842,8 +876,9 @@ export function buildHouse(scene: THREE.Scene) {
       return [hit, ...parts.slice(0, 0)];
     };
     const mid = (a + b) / 2;
-    doors.push(makeLeaf(lv.group, [M(a), M(z), y], M(mid - a), build, Math.PI / 2, `balkon-${lv.level.id}`));
-    doors.push(makeLeaf(lv.group, [M(b), M(z), y], M(b - mid), build, -Math.PI / 2, `balkon-${lv.level.id}`, Math.PI));
+    // každé křídlo se otevírá samostatně
+    doors.push(makeLeaf(lv.group, [M(a), M(z), y], M(mid - a), build, Math.PI / 2, `balkon-${lv.level.id}-L`));
+    doors.push(makeLeaf(lv.group, [M(b), M(z), y], M(b - mid), build, -Math.PI / 2, `balkon-${lv.level.id}-R`, Math.PI));
   }
   return { house, levels, roof, doors };
 }
