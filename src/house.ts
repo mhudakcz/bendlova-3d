@@ -94,7 +94,7 @@ export const STAIR_HOLE: [number, number, number, number] = [860, 975, 1070, 135
 //    v y = 700 u štítu se sousedem (x = 1100); obě střechy se potkávají v úžlabí.
 export const ROOF = {
   eave: 730, // výška okapu nad podlahou přízemí (cm)
-  rise: 480, // hřeben hlavní střechy nad okapem
+  rise: 400, // hřeben hlavní střechy nad okapem
   ridgeY: 700,
   wingRidgeY: 450,
   hipApexX: 940, // začátek hlavního hřebene (z výkresu krovu)
@@ -108,9 +108,11 @@ const K = ROOF.ridgeY / (ROOF.hipApexX - 350); // valba hlavní střechy je strm
 export const DORMER = {
   y0: 290, y1: 585, // včetně bočnic
   depth: 225, // hloubka vikýře (výklenek pokoje podle krovu), stříška se zde potká s valbou
-  z0: 868, // výška stříšky nad líc fasády (cm vůči podlaze přízemí)
-  slope: 0.073,
+  z0: 845, // výška stříšky nad líc fasády (cm vůči podlaze přízemí)
+  slope: 0,
 };
+// stříška vikýře se v hloubce vikýře potká s valbou křídla
+DORMER.slope = (ROOF.eave + (ROOF.rise / ROOF.ridgeY) * DORMER.depth - DORMER.z0) / DORMER.depth;
 export const dormerRoofZ = (x: number) => DORMER.z0 + DORMER.slope * x;
 const inDormer = (x: number, y: number) => x < DORMER.depth && y > DORMER.y0 && y < DORMER.y1;
 
@@ -127,7 +129,6 @@ export function roofFaces(): RoofFace[] {
   const A: [number, number] = [ROOF.wingRidgeY, ROOF.wingRidgeY]; // vrchol valby křídla
   const V: [number, number] = [350 + ROOF.wingRidgeY / K, ROOF.wingRidgeY]; // konec hřebene křídla / úžlabí
   const Mx = ROOF.hipApexX, My = ROOF.ridgeY;
-  const FRONT_EAVE = STAIR_FRONT.y + 20;
   return [
     { name: 'zadní', pts: [[-o, -o], [1100, -o], [1100, My], [Mx, My], V, A], h: (_x, y) => E + S * y },
     {
@@ -135,26 +136,25 @@ export function roofFaces(): RoofFace[] {
       holes: [[[0, DORMER.y0], [DORMER.depth, DORMER.y0], [DORMER.depth, DORMER.y1], [0, DORMER.y1]]],
     },
     { name: 'přední křídla', pts: [[-o, 900 + o], A, V, [350 - oh, 900 + o]], h: (_x, y) => E + S * (900 - y) },
-    // uliční okap jde rovně až před předsazené schodiště – nad béžovou částí je hluboký podhled
-    // nároží zůstává s běžným přesahem; hluboký uliční přesah končí rovně nad bokem domu (x = 350)
-    { name: 'valba hlavní', pts: [[350 - oh, 900 + o], [350 - oh, 1400 + o], [Mx, My], V], h: (x) => E + K * S * (x - 350) },
-    { name: 'uliční', pts: [[350 - oh, 1400 + o], [1100, 1400 + o], [1100, My], [Mx, My]], h: (_x, y) => E + S * (1400 - y) },
-    // hluboký, téměř vodorovný přesah do ulice (podhled až k čelu předsazeného schodiště) v úrovni okapu
-    { name: 'uliční podhled', pts: [[350 - oh, 1400 + o], [350 - oh, FRONT_EAVE], [1100, FRONT_EAVE], [1100, 1400 + o]], h: (_x, y) => frontSoffitZ(y) },
+    // uliční rovina má mírnější sklon (jako soused) a jde v jednom sklonu až před předsazené schodiště
+    { name: 'valba hlavní', pts: [[350 - oh, 900 + o], [350 - oh, FRONT_EAVE_Y], [Mx, My], V], h: (x) => E + K * S * (x - 350) },
+    { name: 'uliční', pts: [[350 - oh, FRONT_EAVE_Y], [1100, FRONT_EAVE_Y], [1100, My], [Mx, My]], h: (_x, y) => frontRoofZ(y) },
   ];
 }
 
-/** výška hlubokého uličního přesahu (mírný spád od okapu dopředu) */
-const frontSoffitZ = (y: number) => ROOF.eave - ROOF.overhang * S - 0.05 * (y - 1400 - ROOF.overhang);
+/** uliční rovina střechy: od hřebene mírnějším sklonem až k okapu před předsazeným schodištěm (sklon jako soused) */
+export const FRONT_EAVE_Y = STAIR_FRONT.y + ROOF.overhang;
+const FRONT_EAVE_Z = ROOF.eave - ROOF.overhang * S; // ve výšce okapu nároží
+export const FRONT_SLOPE = (ROOF.eave + ROOF.rise - FRONT_EAVE_Z) / (FRONT_EAVE_Y - ROOF.ridgeY);
+export const frontRoofZ = (y: number) => ROOF.eave + ROOF.rise - FRONT_SLOPE * (y - ROOF.ridgeY);
 
 /** Výška střešní plochy (cm) v bodě půdorysu. */
 export function roofHeight(x: number, y: number): number {
   const E = ROOF.eave;
-  if (y > 1400 + ROOF.overhang && x > 350 - ROOF.overhang) return frontSoffitZ(y);
   if (inDormer(x, y)) return dormerRoofZ(x);
   const back = E + S * y;
   if (K * (x - 350) <= 900 - y) return Math.min(back, E + S * (900 - y), E + S * x); // křídlo
-  return Math.min(back, E + S * (1400 - y), E + K * S * (x - 350)); // hlavní střecha
+  return Math.min(back, frontRoofZ(y), E + K * S * (x - 350)); // hlavní střecha
 }
 
 const win = (a: number, b: number, sill = 90, h = 150): Opening => ({ a, b, sill, h, kind: 'window' });
@@ -331,10 +331,10 @@ const atticWalls: Wall[] = [
   { r: [770, 160, 780, 440], h: BIG },
   { r: [515, 430, 780, 440], h: BIG, o: [door(560, 640)] },
   // předsíň
-  { r: [860, 435, 875, 770], h: BIG }, // předsíň | půda vpravo (bez dveří)
+  { r: [860, 435, 875, 840], h: BIG, o: [door(560, 640)] }, // předsíň | chodba ke schodům – dveře do předsíně
   { r: [780, 435, 860, 445], h: BIG }, // předsíň | půda
   { r: [515, 830, 830, 840], h: BIG }, // předsíň | přední půda (bez dveří)
-  { r: [875, 700, 1070, 715], h: BIG, o: [door(960, 1040)] }, // půda u souseda | podesta schodiště, dveře z podesty
+  { r: [875, 500, 1070, 515], h: BIG, o: [door(960, 1040)] }, // půda u souseda | chodba ke schodům, dveře na půdu
   { r: [830, 830, 860, SF_IN], h: BIG }, // bok schodiště – od předsíně je průchod na podestu
   // zábradlí kolem otvoru schodiště
   { r: [975, 975, 1070, 983], h: 100, kind: 'railing', rail: 'bars' }, // zábradlí nad ramenem pod podestou podkroví
@@ -344,8 +344,8 @@ const atticRooms: Room[] = [
   { name: '', r: [45, DORMER.y0, 195, DORMER.y1], floor: 'wood' }, // výklenek vikýře
   { name: 'Koupelna', r: [515, 160, 770, 430], floor: 'tile' },
   { name: 'Předsíň', r: [515, 440, 860, 830], floor: 'wood' },
-  { name: 'Půda', r: [875, 45, 1070, 700], floor: 'concrete' },
-  { name: '', r: [875, 715, 1070, 770], floor: 'terrazzo' }, // podesta před dveřmi na půdu
+  { name: 'Půda', r: [875, 45, 1070, 500], floor: 'concrete' },
+  { name: '', r: [875, 515, 1070, 770], floor: 'terrazzo' }, // chodba od schodů k předsíni a na půdu
   { name: 'Půda', r: [45, 45, 870, 150], floor: 'concrete' },
   { name: '', r: [45, 150, 185, DORMER.y0], floor: 'concrete' },
   { name: '', r: [45, DORMER.y1, 195, 900], floor: 'concrete' },

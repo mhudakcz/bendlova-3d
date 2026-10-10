@@ -1,7 +1,7 @@
 import * as THREE from 'three';
 import { CSS2DObject } from 'three/examples/jsm/renderers/CSS2DRenderer.js';
 import {
-  BALCONY, BOILER, DOG_STEPS, FOOTPRINT, GARAGE, GARDEN_STEPS, SKLAD_PIT, LEVELS, Level, ROOF, Room, STAIR, STAIR_FRONT, STAIR_HOLE, TERRAIN_Z, Wall, roofFaces, roofHeight, DORMER, dormerRoofZ,
+  BALCONY, BOILER, DOG_STEPS, FOOTPRINT, GARAGE, GARDEN_STEPS, SKLAD_PIT, LEVELS, Level, ROOF, Room, STAIR, STAIR_FRONT, STAIR_HOLE, TERRAIN_Z, Wall, roofFaces, roofHeight, DORMER, dormerRoofZ, ROOF_SLOPE, FRONT_EAVE_Y, frontRoofZ,
 } from './house';
 import { OSM } from './osm';
 import { densify, terrainY } from './terrain';
@@ -941,10 +941,11 @@ export function buildSurroundings(scene: THREE.Scene) {
     return cx > 11 && cx < 37 && cy > 4 && cy < 16;
   };
   {
-    // sousední řada má okap výš než náš dům (podle fotek ~60 cm), hřeben navazuje
-    const E = M(ROOF.eave) + 0.6, R = M(ROOF.eave + ROOF.rise), o = M(ROOF.overhang);
-    const D = 14, ry = 7, xEnd = ROW[ROW.length - 1].x1, xr = xEnd - ry; // konec hřebene u valby
-    const S = (R - E) / ry;
+    // střecha řady plynule pokračuje v rovinách naší střechy (stejný okap, sklony i hřeben)
+    const E = M(ROOF.eave), R = M(ROOF.eave + ROOF.rise), o = M(ROOF.overhang);
+    const D = 14, ry = M(ROOF.ridgeY), xEnd = ROW[ROW.length - 1].x1, xr = xEnd - ry; // konec hřebene u valby
+    const S = ROOF_SLOPE, yFe = M(FRONT_EAVE_Y);
+    const frontZ = (y: number) => M(frontRoofZ(y * 100));
     const G1 = M(TERRAIN_Z);
     const solid = (x0: number, y0: number, x1: number, y1: number, z0: number, z1: number, color: string) => {
       const b = new THREE.Mesh(new THREE.BoxGeometry(x1 - x0, z1 - z0, y1 - y0), new THREE.MeshStandardMaterial({ color, roughness: 0.95 }));
@@ -953,13 +954,17 @@ export function buildSurroundings(scene: THREE.Scene) {
       group.add(b);
       return b;
     };
-    for (const h of ROW) solid(h.x0 + 0.01, 0, h.x1 - 0.01, D, G1, E, h.color);
+    for (const h of ROW) {
+      solid(h.x0 + 0.01, 0, h.x1 - 0.01, D, G1, E, h.color);
+      solid(h.x0 + 0.01, D - 0.3, h.x1 - 0.01, D, E - 0.01, frontZ(D) - 0.02, h.color); // uliční zeď až pod střechu
+    }
     // první soused: předsazený žlutý rám s lodžiemi (do linie našeho schodiště), garáž v přízemí
     {
       const n = ROW[0], yF = 15.6, yel = n.color, x0 = n.x0 + 0.02, x1 = n.x1 - 0.02;
-      solid(x0, D, x0 + 0.35, yF, G1, E + 0.25, yel); // bok rámu u nás
-      solid(x1 - 0.35, D, x1, yF, G1, E + 0.25, yel); // druhý bok
-      solid(x0, D - 0.2, x1, yF + 0.15, E, E + 0.25, yel); // horní deska rámu (římsa)
+      const top = frontZ(yF + 0.15) - 0.03; // rám končí pod uliční rovinou střechy
+      solid(x0, D, x0 + 0.35, yF, G1, top, yel); // bok rámu u nás
+      solid(x1 - 0.35, D, x1, yF, G1, top, yel); // druhý bok
+      solid(x0, D - 0.2, x1, yF + 0.15, top - 0.25, top, yel); // horní deska rámu (římsa)
       solid(x0 + 0.35, D, x1 - 0.35, yF - 0.25, G1, -0.3, yel); // přízemí s garáží
       solid(x0 + 2.2, yF - 0.27, x1 - 2.2, yF - 0.24, G1 + 0.05, -0.55, '#7a3d2f'); // vrata garáže souseda
       for (const z of [0, 3.0]) {
@@ -968,13 +973,13 @@ export function buildSurroundings(scene: THREE.Scene) {
       }
     }
     const P = (x: number, y: number, z: number) => new THREE.Vector3(x, z, y);
-    const eo = E - o * S; // (okap řady je výš než náš)
+    const eo = E - o * S; // stejná výška okapu jako u nás (vpředu i vzadu)
     const x0 = ROW[0].x0;
     const tri: THREE.Vector3[] = [];
     const quad = (a: THREE.Vector3, b: THREE.Vector3, c: THREE.Vector3, d: THREE.Vector3) => tri.push(a, b, c, a, c, d);
     quad(P(x0, -o, eo), P(xEnd + o, -o, eo), P(xr, ry, R), P(x0, ry, R)); // zadní
-    quad(P(x0, D + o, eo), P(x0, ry, R), P(xr, ry, R), P(xEnd + o, D + o, eo)); // uliční
-    tri.push(P(xEnd + o, -o, eo), P(xEnd + o, D + o, eo), P(xr, ry, R)); // valba na konci řady
+    quad(P(x0, yFe, eo), P(x0, ry, R), P(xr, ry, R), P(xEnd + o, yFe, eo)); // uliční
+    tri.push(P(xEnd + o, -o, eo), P(xEnd + o, yFe, eo), P(xr, ry, R)); // valba na konci řady
     const rg = new THREE.BufferGeometry().setFromPoints(tri);
     rg.computeVertexNormals();
     const roofRow = new THREE.Mesh(rg, rMat);
