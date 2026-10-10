@@ -941,16 +941,34 @@ export function buildSurroundings(scene: THREE.Scene) {
     return cx > 11 && cx < 37 && cy > 4 && cy < 16;
   };
   {
-    const E = M(ROOF.eave), R = M(ROOF.eave + ROOF.rise), S = ROOF.rise / ROOF.ridgeY, o = M(ROOF.overhang);
+    // sousední řada má okap výš než náš dům (podle fotek ~60 cm), hřeben navazuje
+    const E = M(ROOF.eave) + 0.6, R = M(ROOF.eave + ROOF.rise), o = M(ROOF.overhang);
     const D = 14, ry = 7, xEnd = ROW[ROW.length - 1].x1, xr = xEnd - ry; // konec hřebene u valby
-    for (const h of ROW) {
-      const box = new THREE.Mesh(new THREE.BoxGeometry(h.x1 - h.x0 - 0.02, E - M(TERRAIN_Z), D), new THREE.MeshStandardMaterial({ color: h.color, roughness: 0.95 }));
-      box.position.set((h.x0 + h.x1) / 2, (E + M(TERRAIN_Z)) / 2, D / 2);
-      box.castShadow = box.receiveShadow = true;
-      group.add(box);
+    const S = (R - E) / ry;
+    const G1 = M(TERRAIN_Z);
+    const solid = (x0: number, y0: number, x1: number, y1: number, z0: number, z1: number, color: string) => {
+      const b = new THREE.Mesh(new THREE.BoxGeometry(x1 - x0, z1 - z0, y1 - y0), new THREE.MeshStandardMaterial({ color, roughness: 0.95 }));
+      b.position.set((x0 + x1) / 2, (z0 + z1) / 2, (y0 + y1) / 2);
+      b.castShadow = b.receiveShadow = true;
+      group.add(b);
+      return b;
+    };
+    for (const h of ROW) solid(h.x0 + 0.01, 0, h.x1 - 0.01, D, G1, E, h.color);
+    // první soused: předsazený žlutý rám s lodžiemi (do linie našeho schodiště), garáž v přízemí
+    {
+      const n = ROW[0], yF = 15.6, yel = n.color, x0 = n.x0 + 0.02, x1 = n.x1 - 0.02;
+      solid(x0, D, x0 + 0.35, yF, G1, E + 0.25, yel); // bok rámu u nás
+      solid(x1 - 0.35, D, x1, yF, G1, E + 0.25, yel); // druhý bok
+      solid(x0, D - 0.2, x1, yF + 0.15, E, E + 0.25, yel); // horní deska rámu (římsa)
+      solid(x0 + 0.35, D, x1 - 0.35, yF - 0.25, G1, -0.3, yel); // přízemí s garáží
+      solid(x0 + 2.2, yF - 0.27, x1 - 2.2, yF - 0.24, G1 + 0.05, -0.55, '#7a3d2f'); // vrata garáže souseda
+      for (const z of [0, 3.0]) {
+        solid(x0 + 0.35, D, x1 - 0.35, yF - 0.1, z - 0.2, z, '#d8c27a'); // podlaha lodžie
+        solid(x0 + 0.35, yF - 0.2, x1 - 0.35, yF - 0.12, z, z + 1.0, '#8a2f2a'); // zábradlí (tmavě červené)
+      }
     }
     const P = (x: number, y: number, z: number) => new THREE.Vector3(x, z, y);
-    const eo = E - o * S;
+    const eo = E - o * S; // (okap řady je výš než náš)
     const x0 = ROW[0].x0;
     const tri: THREE.Vector3[] = [];
     const quad = (a: THREE.Vector3, b: THREE.Vector3, c: THREE.Vector3, d: THREE.Vector3) => tri.push(a, b, c, a, c, d);
